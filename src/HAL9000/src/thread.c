@@ -36,6 +36,8 @@ typedef struct _THREAD_SYSTEM_DATA
 
     _Guarded_by_(ReadyThreadsLock)
     LIST_ENTRY          ReadyThreadsList;
+
+    QWORD               NumberOfThreads;
 } THREAD_SYSTEM_DATA, *PTHREAD_SYSTEM_DATA;
 
 static THREAD_SYSTEM_DATA m_threadSystemData;
@@ -145,6 +147,8 @@ ThreadSystemPreinit(
 
     InitializeListHead(&m_threadSystemData.ReadyThreadsList);
     LockInit(&m_threadSystemData.ReadyThreadsLock);
+
+    m_threadSystemData.NumberOfThreads = 0;
 }
 
 STATUS
@@ -566,6 +570,7 @@ ThreadExit(
     ProcessNotifyThreadTermination(pThread);
 
     LOG("Exiting thread: name=%s, TID=%x\n", pThread->Name, pThread->Id);
+    m_threadSystemData.NumberOfThreads -= 1;
 
     LockAcquire(&m_threadSystemData.ReadyThreadsLock, &oldState);
     _ThreadSchedule();
@@ -798,6 +803,7 @@ _ThreadInit(
         pThread->Priority = Priority;
 
         LOG("Created thread: name=%s, TID=%x\n", pThread->Name, pThread->Id);
+        m_threadSystemData.NumberOfThreads += 1;
 
         LockInit(&pThread->BlockLock);
 
