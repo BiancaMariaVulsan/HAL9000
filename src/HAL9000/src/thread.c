@@ -328,6 +328,7 @@ ThreadCreateEx(
     status = _ThreadInit(Name, Priority, &pThread, TRUE);
     if (!SUCCEEDED(status))
     {
+        LOG_ERROR("Failed to create thread: name=%s, TID=%x\n ", pThread->Name, pThread->Id);
         LOG_FUNC_ERROR("_ThreadInit", status);
         return status;
     }
@@ -564,6 +565,8 @@ ThreadExit(
 
     ProcessNotifyThreadTermination(pThread);
 
+    LOG("Exiting thread: name=%s, TID=%x\n", pThread->Name, pThread->Id);
+
     LockAcquire(&m_threadSystemData.ReadyThreadsLock, &oldState);
     _ThreadSchedule();
     NOT_REACHED;
@@ -793,6 +796,8 @@ _ThreadInit(
         pThread->Id = _ThreadSystemGetNextTid();
         pThread->State = ThreadStateBlocked;
         pThread->Priority = Priority;
+
+        LOG("Created thread: name=%s, TID=%x\n", pThread->Name, pThread->Id);
 
         LockInit(&pThread->BlockLock);
 
