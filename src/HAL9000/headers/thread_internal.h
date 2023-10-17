@@ -39,6 +39,7 @@ typedef struct _THREAD
 
     TID                     Id;
     char*                   Name;
+    TID                     ParentThreadId;
 
     // Currently the thread priority is not used for anything
     THREAD_PRIORITY         Priority;

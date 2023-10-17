@@ -134,6 +134,7 @@ void
 
     LOG("%7s", "TID|");
     LOG("%20s", "Name|");
+	LOG("%7s", "TID|");
     LOG("%5s", "Prio|");
     LOG("%8s", "State|");
     LOG("%10s", "Cmp ticks|");

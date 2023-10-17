@@ -801,6 +801,9 @@ _ThreadInit(
         pThread->Id = _ThreadSystemGetNextTid() << 4; // 0x10 = 16
         pThread->State = ThreadStateBlocked;
         pThread->Priority = Priority;
+        if (GetCurrentThread() != NULL) {
+			pThread->ParentThreadId = GetCurrentThread()->Id;
+        }
 
         LOG("Created thread: name=%s, TID=%x\n", pThread->Name, pThread->Id);
         m_threadSystemData.NumberOfThreads += 1;
