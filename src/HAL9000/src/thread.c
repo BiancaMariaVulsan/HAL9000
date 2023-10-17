@@ -448,7 +448,9 @@ ThreadTick(
     if (++pCpu->ThreadData.RunningThreadTicks >= THREAD_TIME_SLICE)
     {
         LOG_TRACE_THREAD("Will yield on return\n");
-        pCpu->ThreadData.YieldOnInterruptReturn = TRUE;
+        //pCpu->ThreadData.YieldOnInterruptReturn = TRUE;
+        ThreadYield();
+        // The thread will always yield when the time slice expires, regardless of the value of the removed flag
     }
 }
 
