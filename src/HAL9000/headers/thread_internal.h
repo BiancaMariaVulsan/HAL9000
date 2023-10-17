@@ -253,6 +253,19 @@ ThreadExecuteForEachThreadEntry(
     IN_OPT  PVOID               Context
     );
 
+//******************************************************************************
+// Function:     ThreadExecuteForEachThreadEntry
+// Description:  Iterates over the all threads list and invokes Function on each
+//               entry passing an additional optional Context parameter.
+// Returns:      STATUS
+// Parameter:    IN PFUNC_ListFunction Function
+// Parameter:    IN_OPT PVOID Context
+//******************************************************************************
+STATUS
+ThreadExecuteForEachReadyThreadEntry(
+    IN      PFUNC_ListFunction  Function,
+    IN_OPT  PVOID               Context
+);
 
 //******************************************************************************O
 // Function:     GetCurrentThread

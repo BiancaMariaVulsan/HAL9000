@@ -148,6 +148,30 @@ void
 }
 
 void
+(__cdecl CmdListReadyThreads)(
+	IN          QWORD       NumberOfParameters
+	)
+{
+	STATUS status;
+
+	ASSERT(NumberOfParameters == 0);
+
+	LOG("%7s", "TID|");
+	LOG("%20s", "Name|");
+	LOG("%7s", "TID|");
+	LOG("%5s", "Prio|");
+	LOG("%8s", "State|");
+	LOG("%10s", "Cmp ticks|");
+	LOG("%10s", "Prt ticks|");
+	LOG("%10s", "Ttl ticks|");
+	LOG("%10s", "Process|");
+	LOG("\n");
+
+	status = ThreadExecuteForEachReadyThreadEntry(_CmdThreadPrint, NULL);
+	ASSERT(SUCCEEDED(status));
+}
+
+void
 (__cdecl CmdYield)(
     IN          QWORD       NumberOfParameters
     )

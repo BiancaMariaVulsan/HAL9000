@@ -698,6 +698,33 @@ ThreadExecuteForEachThreadEntry(
     return status;
 }
 
+STATUS
+ThreadExecuteForEachReadyThreadEntry(
+	IN      PFUNC_ListFunction  Function,
+	IN_OPT  PVOID               Context
+)
+{
+	STATUS status;
+	INTR_STATE oldState;
+
+	if (NULL == Function)
+	{
+		return STATUS_INVALID_PARAMETER1;
+	}
+
+	status = STATUS_SUCCESS;
+
+	LockAcquire(&m_threadSystemData.ReadyThreadsLock, &oldState);
+	status = ForEachElementExecute(&m_threadSystemData.ReadyThreadsList,
+		Function,
+		Context,
+		FALSE
+	);
+	LockRelease(&m_threadSystemData.ReadyThreadsLock, oldState);
+
+	return status;
+}
+
 void
 SetCurrentThread(
     IN      PTHREAD     Thread
