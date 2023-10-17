@@ -17,7 +17,7 @@
 #include "vmm.h"
 #include "pit.h"
 
-#include "thread.c"
+#include "thread.h"
 
 #pragma warning(push)
 
@@ -45,7 +45,6 @@ typedef struct _BOUND_THREAD_CTX
 static FUNC_ThreadStart     _ThreadCpuBound;
 static FUNC_ThreadStart     _ThreadIoBound;
 
-//static THREAD_SYSTEM_DATA m_threadSystemData;
 
 static
 void
@@ -131,7 +130,7 @@ void
     STATUS status;
 
     ASSERT(NumberOfParameters == 0);
-    LOG("Number of threads in the system: %d", m_threadSystemData.NumberOfThreads);
+    LOG("Number of threads in the system: %d", GetNumberOfThreads());
 
     LOG("%7s", "TID|");
     LOG("%20s", "Name|");
