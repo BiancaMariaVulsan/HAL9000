@@ -798,7 +798,7 @@ _ThreadInit(
 
         strcpy(pThread->Name, Name);
 
-        pThread->Id = _ThreadSystemGetNextTid();
+        pThread->Id = _ThreadSystemGetNextTid() << 4; // 0x10 = 16
         pThread->State = ThreadStateBlocked;
         pThread->Priority = Priority;
 
@@ -1249,4 +1249,8 @@ _ThreadKernelFunction(
 
     ThreadExit(exitStatus);
     NOT_REACHED;
+}
+
+QWORD GetNumberOfThreads() {
+    return m_threadSystemData.NumberOfThreads;
 }
