@@ -144,6 +144,29 @@ void
 }
 
 void
+(__cdecl CmdTestSemaphore)()
+{
+	SEMAPHORE semaphore;
+	DWORD numCPUs = GetActiveProcessorCount();
+	DWORD expectedValue = numCPUs - 1;
+
+	// Initialize the semaphore with an initial value of 0
+	SemaphoreInit(&semaphore, 0);
+
+	// Send IPI to other processors to increment the semaphore
+	for (DWORD cpu = 0; cpu < numCPUs; cpu++)
+	{
+		if (cpu != GetCurrentCpuNumber())
+		{
+			// TODO: call SmpSendGenericIpi
+		}
+	}
+
+	// Wait for all other CPUs to increment the semaphore
+	SemaphoreDown(&semaphore, expectedValue);
+}
+
+void
 (__cdecl CmdYield)(
     IN          QWORD       NumberOfParameters
     )

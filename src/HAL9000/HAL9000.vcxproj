@@ -181,6 +181,8 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="semaphore.cpp" />
+    <ClCompile Include="semaphore_bw.cpp" />
     <ClCompile Include="src\acpi_interface.c" />
     <ClCompile Include="src\acpi_osl.c" />
     <ClCompile Include="src\ap_tramp.c" />
@@ -366,6 +368,8 @@
     <ClInclude Include="headers\um_application.h" />
     <ClInclude Include="headers\vmm.h" />
     <ClInclude Include="headers\vm_reservation_space.h" />
+    <ClInclude Include="semaphore.h" />
+    <ClInclude Include="semaphore_bw.h" />
   </ItemGroup>
   <ItemGroup>
     <YASM Include="src\_mboot32.yasm">

@@ -6,7 +6,6 @@
 
 #include "mutex.h"
 
-
 FUNC_ThreadStart                TestThreadYield;
 
 FUNC_ThreadStart                TestMutexes;
