@@ -59,6 +59,19 @@ SystemPreinit(
     ProcessSystemPreinit();
 }
 
+static
+STATUS
+(__cdecl _HelloIpi)(
+    IN_OPT PVOID Context
+    )
+{
+    UNREFERENCED_PARAMETER(Context);
+
+    LOGP("Hello\n");
+    return STATUS_SUCCESS;
+}
+
+
 STATUS
 SystemInit(
     IN  ASM_PARAMETERS*     Parameters
@@ -312,6 +325,24 @@ SystemInit(
     }
 
     LOGL("Network stack successfully initialized\n");
+
+    // The last parameter represents WaitForHandling
+    // Processors: 6, 2, 4
+     status = SmpSendGenericIpi(_HelloIpi, NULL, NULL, NULL, FALSE);
+    
+    // Processors: 2, 6, 4
+    // status = SmpSendGenericIpi(_HelloIpi, NULL, NULL, NULL, TRUE);
+
+    // Say Hello from each processor
+    SMP_DESTINATION destination = { 0 };
+    status = SmpSendGenericIpiEx(_HelloIpi, NULL, NULL, NULL, TRUE, SmpIpiSendToAllExcludingSelf,
+        destination);
+
+    if (!SUCCEEDED(status))
+    {
+        LOG_FUNC_ERROR("SmpSendGenericIpi", status);
+        return status;
+    }
 
     return status;
 }

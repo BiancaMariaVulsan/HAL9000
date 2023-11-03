@@ -1,0 +1,279 @@
+diff --git a/src/HAL9000/HAL9000.vcxproj b/src/HAL9000/HAL9000.vcxproj
+index dfc3040..779c36a 100644
+--- a/src/HAL9000/HAL9000.vcxproj
++++ b/src/HAL9000/HAL9000.vcxproj
+@@ -181,8 +181,6 @@
+     </PostBuildEvent>
+   </ItemDefinitionGroup>
+   <ItemGroup>
+-    <ClCompile Include="semaphore.cpp" />
+-    <ClCompile Include="semaphore_bw.cpp" />
+     <ClCompile Include="src\acpi_interface.c" />
+     <ClCompile Include="src\acpi_osl.c" />
+     <ClCompile Include="src\ap_tramp.c" />
+@@ -368,8 +366,6 @@
+     <ClInclude Include="headers\um_application.h" />
+     <ClInclude Include="headers\vmm.h" />
+     <ClInclude Include="headers\vm_reservation_space.h" />
+-    <ClInclude Include="semaphore.h" />
+-    <ClInclude Include="semaphore_bw.h" />
+   </ItemGroup>
+   <ItemGroup>
+     <YASM Include="src\_mboot32.yasm">
+diff --git a/src/HAL9000/HAL9000.vcxproj.filters b/src/HAL9000/HAL9000.vcxproj.filters
+index 6fabf45..0d3b52f 100644
+--- a/src/HAL9000/HAL9000.vcxproj.filters
++++ b/src/HAL9000/HAL9000.vcxproj.filters
+@@ -402,12 +402,6 @@
+     <ClCompile Include="src\test_process.c">
+       <Filter>Source Files\debug\test\userprog</Filter>
+     </ClCompile>
+-    <ClCompile Include="semaphore.cpp">
+-      <Filter>Source Files\executive</Filter>
+-    </ClCompile>
+-    <ClCompile Include="semaphore_bw.cpp">
+-      <Filter>Source Files\executive</Filter>
+-    </ClCompile>
+   </ItemGroup>
+   <ItemGroup>
+     <ClInclude Include="headers\HAL9000.h">
+@@ -710,12 +704,6 @@
+     <ClInclude Include="headers\test_process.h">
+       <Filter>Header Files\debug\test\userprog</Filter>
+     </ClInclude>
+-    <ClInclude Include="semaphore.h">
+-      <Filter>Header Files\executive</Filter>
+-    </ClInclude>
+-    <ClInclude Include="semaphore_bw.h">
+-      <Filter>Source Files\executive</Filter>
+-    </ClInclude>
+   </ItemGroup>
+   <ItemGroup>
+     <None Include="src\defines.yasm">
+diff --git a/src/HAL9000/headers/cmd_thread_helper.h b/src/HAL9000/headers/cmd_thread_helper.h
+index d1838bc..0461ea0 100644
+--- a/src/HAL9000/headers/cmd_thread_helper.h
++++ b/src/HAL9000/headers/cmd_thread_helper.h
+@@ -4,7 +4,6 @@
+ 
+ FUNC_GenericCommand CmdListCpus;
+ FUNC_GenericCommand CmdListThreads;
+-FUNC_GenericCommand CmdTestSemaphores;
+ FUNC_GenericCommand CmdYield;
+ FUNC_GenericCommand CmdRunTest;
+ FUNC_GenericCommand CmdSendIpi;
+diff --git a/src/HAL9000/semaphore.cpp b/src/HAL9000/semaphore.cpp
+deleted file mode 100644
+index 52b6d87..0000000
+--- a/src/HAL9000/semaphore.cpp
++++ /dev/null
+@@ -1,65 +0,0 @@
+-#include "HAL9000.h"
+-#include "thread_internal.h"
+-#include "semaphore.h"
+-
+-void SemaphoreInit(PSEMAPHORE Semaphore, DWORD InitialValue)
+-{
+-	ASSERT(Semaphore != NULL);
+-
+-	memzero(Semaphore, sizeof(SEMAPHORE));
+-
+-	LockInit(&Semaphore->MutexLock);
+-	InitializeListHead(&Semaphore->WaitingList);
+-	Semaphore->Value = InitialValue;
+-}
+-
+-void SemaphoreDown(PSEMAPHORE Semaphore, DWORD Value)
+-{
+-	INTR_STATE dummyState;
+-	INTR_STATE oldState;
+-	PTHREAD pCurrentThread = GetCurrentThread();
+-
+-	ASSERT(Semaphore != NULL);
+-	ASSERT(pCurrentThread != NULL);
+-
+-	oldState = CpuIntrDisable();
+-
+-	LockAcquire(&Semaphore->MutexLock, &dummyState);
+-
+-	while (Semaphore->Value < Value)
+-	{
+-		InsertTailList(&Semaphore->WaitingList, &pCurrentThread->ReadyList);
+-		ThreadTakeBlockLock();
+-		LockRelease(&Semaphore->MutexLock, dummyState);
+-		ThreadBlock();
+-		LockAcquire(&Semaphore->MutexLock, &dummyState);
+-	}
+-
+-	Semaphore->Value -= Value;
+-
+-	LockRelease(&Semaphore->MutexLock, dummyState);
+-
+-	CpuIntrSetState(oldState);
+-}
+-
+-void SemaphoreUp(PSEMAPHORE Semaphore, DWORD Value)
+-{
+-	INTR_STATE oldState;
+-	PLIST_ENTRY pEntry;
+-
+-	ASSERT(Semaphore != NULL);
+-
+-	LockAcquire(&Semaphore->MutexLock, &oldState);
+-
+-	Semaphore->Value += Value;
+-
+-	pEntry = RemoveHeadList(&Semaphore->WaitingList);
+-
+-	if (pEntry != &Semaphore->WaitingList)
+-	{
+-		PTHREAD pThread = CONTAINING_RECORD(pEntry, THREAD, ReadyList);
+-		ThreadUnblock(pThread);
+-	}
+-
+-	LockRelease(&Semaphore->MutexLock, oldState);
+-}
+diff --git a/src/HAL9000/semaphore.h b/src/HAL9000/semaphore.h
+deleted file mode 100644
+index eda6cde..0000000
+--- a/src/HAL9000/semaphore.h
++++ /dev/null
+@@ -1,19 +0,0 @@
+-#pragma once
+-
+-#ifndef SEMAPHORE_H
+-#define SEMAPHORE_H
+-
+-#include "HAL9000.h"
+-
+-typedef struct _SEMAPHORE
+-{
+-	DWORD Value;
+-	LOCK MutexLock;
+-	LIST_ENTRY WaitingList;
+-} SEMAPHORE, *PSEMAPHORE;
+-
+-void SemaphoreInit(PSEMAPHORE Semaphore, DWORD InitialValue);
+-void SemaphoreDown(PSEMAPHORE Semaphore, DWORD Value);
+-void SemaphoreUp(PSEMAPHORE Semaphore, DWORD Value);
+-
+-#endif // SEMAPHORE_H
+diff --git a/src/HAL9000/semaphore_bw.cpp b/src/HAL9000/semaphore_bw.cpp
+deleted file mode 100644
+index ddd8437..0000000
+--- a/src/HAL9000/semaphore_bw.cpp
++++ /dev/null
+@@ -1,32 +0,0 @@
+-#include "HAL9000.h"
+-#include "thread_internal.h"
+-#include "semaphore_bw.h"
+-
+-void SemaphoreInit(PSEMAPHORE_BW Semaphore, DWORD InitialValue)
+-{
+-	ASSERT(Semaphore != NULL);
+-
+-	Semaphore->Value = InitialValue;
+-}
+-
+-void SemaphoreDown(PSEMAPHORE_BW Semaphore, DWORD Value)
+-{
+-	PTHREAD pCurrentThread = GetCurrentThread();
+-
+-	ASSERT(Semaphore != NULL);
+-	ASSERT(pCurrentThread != NULL);
+-
+-	while (Semaphore->Value < Value)
+-	{
+-		// Busy-wait until the semaphore value becomes greater or equal to the requested value
+-	}
+-
+-	Semaphore->Value -= Value;
+-}
+-
+-void SemaphoreUp(PSEMAPHORE_BW Semaphore, DWORD Value)
+-{
+-	ASSERT(Semaphore != NULL);
+-
+-	Semaphore->Value += Value;
+-}
+diff --git a/src/HAL9000/semaphore_bw.h b/src/HAL9000/semaphore_bw.h
+deleted file mode 100644
+index 65a6bc3..0000000
+--- a/src/HAL9000/semaphore_bw.h
++++ /dev/null
+@@ -1,17 +0,0 @@
+-#pragma once
+-
+-#ifndef SEMAPHORE_BW_H
+-#define SEMAPHORE_BW_H
+-
+-#include "HAL9000.h"
+-
+-typedef struct _SEMAPHORE_BW
+-{
+-	volatile DWORD Value;
+-} SEMAPHORE_BW, *PSEMAPHORE_BW;
+-
+-void SemaphoreInit(PSEMAPHORE_BW Semaphore, DWORD InitialValue);
+-void SemaphoreDown(PSEMAPHORE_BW Semaphore, DWORD Value);
+-void SemaphoreUp(PSEMAPHORE_BW Semaphore, DWORD Value);
+-
+-#endif // SEMAPHORE_BW_H
+diff --git a/src/HAL9000/src/cmd_interpreter.c b/src/HAL9000/src/cmd_interpreter.c
+index 22cc706..d987fe9 100644
+--- a/src/HAL9000/src/cmd_interpreter.c
++++ b/src/HAL9000/src/cmd_interpreter.c
+@@ -68,7 +68,6 @@ static const COMMAND_DEFINITION COMMANDS[] =
+                 "\n\t$TIMES - number of times to wait for timer, valid only if periodic", CmdTestTimer, 1, 3},
+ 
+     { "threads", "Displays all threads", CmdListThreads, 0, 0},
+-    { "testsemas", "Test Semaphore", CmdTestSemaphore, 0, 0},
+     { "run", "$TEST [$NO_OF_THREADS]\n\tRuns the $TEST specified"
+              "\n\t$NO_OF_THREADS the number of threads for running the test,"
+              "if the number is not specified then it will run on 2 * NumberOfProcessors",
+diff --git a/src/HAL9000/src/cmd_thread_helper.c b/src/HAL9000/src/cmd_thread_helper.c
+index 079e90d..56e69af 100644
+--- a/src/HAL9000/src/cmd_thread_helper.c
++++ b/src/HAL9000/src/cmd_thread_helper.c
+@@ -143,29 +143,6 @@ void
+     ASSERT( SUCCEEDED(status));
+ }
+ 
+-void
+-(__cdecl CmdTestSemaphore)()
+-{
+-	SEMAPHORE semaphore;
+-	DWORD numCPUs = GetActiveProcessorCount();
+-	DWORD expectedValue = numCPUs - 1;
+-
+-	// Initialize the semaphore with an initial value of 0
+-	SemaphoreInit(&semaphore, 0);
+-
+-	// Send IPI to other processors to increment the semaphore
+-	for (DWORD cpu = 0; cpu < numCPUs; cpu++)
+-	{
+-		if (cpu != GetCurrentCpuNumber())
+-		{
+-			// TODO: call SmpSendGenericIpi
+-		}
+-	}
+-
+-	// Wait for all other CPUs to increment the semaphore
+-	SemaphoreDown(&semaphore, expectedValue);
+-}
+-
+ void
+ (__cdecl CmdYield)(
+     IN          QWORD       NumberOfParameters
+diff --git a/src/HAL9000/src/test_thread.c b/src/HAL9000/src/test_thread.c
+index 922b34b..3ceb2dc 100644
+--- a/src/HAL9000/src/test_thread.c
++++ b/src/HAL9000/src/test_thread.c
+@@ -6,6 +6,7 @@
+ 
+ #include "mutex.h"
+ 
++
+ FUNC_ThreadStart                TestThreadYield;
+ 
+ FUNC_ThreadStart                TestMutexes;

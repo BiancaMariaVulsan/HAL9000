@@ -1,0 +1,321 @@
+diff --git a/.gitignore b/.gitignore
+index b2b2dbd..39e6663 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -73,6 +73,4 @@ VM/*
+ 
+ # HAL tests
+ *.result
+-*.outcome
+-
+-src-project/
+\ No newline at end of file
++*.outcome
+\ No newline at end of file
+diff --git a/PXE/Tests.module b/PXE/Tests.module
+index d167a52..e69de29 100644
+--- a/PXE/Tests.module
++++ b/PXE/Tests.module
+@@ -1 +0,0 @@
+-/threads
+\ No newline at end of file
+diff --git a/src/.vs/ProjectSettings.json b/src/.vs/ProjectSettings.json
+deleted file mode 100644
+index 0cf5ea5..0000000
+--- a/src/.vs/ProjectSettings.json
++++ /dev/null
+@@ -1,3 +0,0 @@
+-{
+-  "CurrentProjectSetting": "No Configurations"
+-}
+\ No newline at end of file
+diff --git a/src/.vs/VSWorkspaceState.json b/src/.vs/VSWorkspaceState.json
+deleted file mode 100644
+index 6b61141..0000000
+--- a/src/.vs/VSWorkspaceState.json
++++ /dev/null
+@@ -1,6 +0,0 @@
+-{
+-  "ExpandedNodes": [
+-    ""
+-  ],
+-  "PreviewInSolutionExplorer": false
+-}
+\ No newline at end of file
+diff --git a/src/.vs/slnx.sqlite b/src/.vs/slnx.sqlite
+deleted file mode 100644
+index ae84063..0000000
+Binary files a/src/.vs/slnx.sqlite and /dev/null differ
+diff --git a/src/.vs/src/FileContentIndex/f70e6c7e-e52f-4d6d-bbbd-a2c8be927d69.vsidx b/src/.vs/src/FileContentIndex/f70e6c7e-e52f-4d6d-bbbd-a2c8be927d69.vsidx
+deleted file mode 100644
+index dfdd87c..0000000
+Binary files a/src/.vs/src/FileContentIndex/f70e6c7e-e52f-4d6d-bbbd-a2c8be927d69.vsidx and /dev/null differ
+diff --git a/src/.vs/src/v17/.wsuo b/src/.vs/src/v17/.wsuo
+deleted file mode 100644
+index 7490f05..0000000
+Binary files a/src/.vs/src/v17/.wsuo and /dev/null differ
+diff --git a/src/HAL9000/headers/cmd_thread_helper.h b/src/HAL9000/headers/cmd_thread_helper.h
+index b62f4c2..0461ea0 100644
+--- a/src/HAL9000/headers/cmd_thread_helper.h
++++ b/src/HAL9000/headers/cmd_thread_helper.h
+@@ -4,7 +4,6 @@
+ 
+ FUNC_GenericCommand CmdListCpus;
+ FUNC_GenericCommand CmdListThreads;
+-FUNC_GenericCommand CmdListReadyThreads;
+ FUNC_GenericCommand CmdYield;
+ FUNC_GenericCommand CmdRunTest;
+ FUNC_GenericCommand CmdSendIpi;
+diff --git a/src/HAL9000/headers/thread_internal.h b/src/HAL9000/headers/thread_internal.h
+index 348ba0b..789fe68 100644
+--- a/src/HAL9000/headers/thread_internal.h
++++ b/src/HAL9000/headers/thread_internal.h
+@@ -39,7 +39,6 @@ typedef struct _THREAD
+ 
+     TID                     Id;
+     char*                   Name;
+-    TID                     ParentThreadId;
+ 
+     // Currently the thread priority is not used for anything
+     THREAD_PRIORITY         Priority;
+@@ -253,19 +252,6 @@ ThreadExecuteForEachThreadEntry(
+     IN_OPT  PVOID               Context
+     );
+ 
+-//******************************************************************************
+-// Function:     ThreadExecuteForEachThreadEntry
+-// Description:  Iterates over the all threads list and invokes Function on each
+-//               entry passing an additional optional Context parameter.
+-// Returns:      STATUS
+-// Parameter:    IN PFUNC_ListFunction Function
+-// Parameter:    IN_OPT PVOID Context
+-//******************************************************************************
+-STATUS
+-ThreadExecuteForEachReadyThreadEntry(
+-    IN      PFUNC_ListFunction  Function,
+-    IN_OPT  PVOID               Context
+-);
+ 
+ //******************************************************************************O
+ // Function:     GetCurrentThread
+diff --git a/src/HAL9000/src/cmd_interpreter.c b/src/HAL9000/src/cmd_interpreter.c
+index 36cf29b..d987fe9 100644
+--- a/src/HAL9000/src/cmd_interpreter.c
++++ b/src/HAL9000/src/cmd_interpreter.c
+@@ -68,7 +68,6 @@ static const COMMAND_DEFINITION COMMANDS[] =
+                 "\n\t$TIMES - number of times to wait for timer, valid only if periodic", CmdTestTimer, 1, 3},
+ 
+     { "threads", "Displays all threads", CmdListThreads, 0, 0},
+-    { "readythreads", "Displays all threads", CmdListReadyThreads, 0, 0},
+     { "run", "$TEST [$NO_OF_THREADS]\n\tRuns the $TEST specified"
+              "\n\t$NO_OF_THREADS the number of threads for running the test,"
+              "if the number is not specified then it will run on 2 * NumberOfProcessors",
+diff --git a/src/HAL9000/src/cmd_thread_helper.c b/src/HAL9000/src/cmd_thread_helper.c
+index 78bec7e..56e69af 100644
+--- a/src/HAL9000/src/cmd_thread_helper.c
++++ b/src/HAL9000/src/cmd_thread_helper.c
+@@ -17,7 +17,6 @@
+ #include "vmm.h"
+ #include "pit.h"
+ 
+-#include "thread.h"
+ 
+ #pragma warning(push)
+ 
+@@ -45,7 +44,6 @@ typedef struct _BOUND_THREAD_CTX
+ static FUNC_ThreadStart     _ThreadCpuBound;
+ static FUNC_ThreadStart     _ThreadIoBound;
+ 
+-
+ static
+ void
+ _CmdHelperPrintThreadFunctions(
+@@ -130,11 +128,9 @@ void
+     STATUS status;
+ 
+     ASSERT(NumberOfParameters == 0);
+-    LOG("Number of threads in the system: %d", GetNumberOfThreads());
+ 
+     LOG("%7s", "TID|");
+     LOG("%20s", "Name|");
+-	LOG("%7s", "TID|");
+     LOG("%5s", "Prio|");
+     LOG("%8s", "State|");
+     LOG("%10s", "Cmp ticks|");
+@@ -147,30 +143,6 @@ void
+     ASSERT( SUCCEEDED(status));
+ }
+ 
+-void
+-(__cdecl CmdListReadyThreads)(
+-	IN          QWORD       NumberOfParameters
+-	)
+-{
+-	STATUS status;
+-
+-	ASSERT(NumberOfParameters == 0);
+-
+-	LOG("%7s", "TID|");
+-	LOG("%20s", "Name|");
+-	LOG("%7s", "TID|");
+-	LOG("%5s", "Prio|");
+-	LOG("%8s", "State|");
+-	LOG("%10s", "Cmp ticks|");
+-	LOG("%10s", "Prt ticks|");
+-	LOG("%10s", "Ttl ticks|");
+-	LOG("%10s", "Process|");
+-	LOG("\n");
+-
+-	status = ThreadExecuteForEachReadyThreadEntry(_CmdThreadPrint, NULL);
+-	ASSERT(SUCCEEDED(status));
+-}
+-
+ void
+ (__cdecl CmdYield)(
+     IN          QWORD       NumberOfParameters
+diff --git a/src/HAL9000/src/iomu.c b/src/HAL9000/src/iomu.c
+index f4be828..cf49feb 100644
+--- a/src/HAL9000/src/iomu.c
++++ b/src/HAL9000/src/iomu.c
+@@ -28,7 +28,7 @@
+ #define PIC_MASTER_OFFSET                   0x20
+ #define PIC_SLAVE_OFFSET                    0x28
+ 
+-#define SCHEDULER_TIMER_INTERRUPT_TIME_US   (10*MS_IN_US)
++#define SCHEDULER_TIMER_INTERRUPT_TIME_US   (40*MS_IN_US)
+ 
+ #define HAL9000_SYSTEM_FILE_NAME            "HAL9000.ini"
+ 
+diff --git a/src/HAL9000/src/thread.c b/src/HAL9000/src/thread.c
+index 827f0cd..3ec2095 100644
+--- a/src/HAL9000/src/thread.c
++++ b/src/HAL9000/src/thread.c
+@@ -12,7 +12,7 @@
+ 
+ #define TID_INCREMENT               4
+ 
+-#define THREAD_TIME_SLICE           4
++#define THREAD_TIME_SLICE           1
+ 
+ extern void ThreadStart();
+ 
+@@ -36,8 +36,6 @@ typedef struct _THREAD_SYSTEM_DATA
+ 
+     _Guarded_by_(ReadyThreadsLock)
+     LIST_ENTRY          ReadyThreadsList;
+-
+-    QWORD               NumberOfThreads;
+ } THREAD_SYSTEM_DATA, *PTHREAD_SYSTEM_DATA;
+ 
+ static THREAD_SYSTEM_DATA m_threadSystemData;
+@@ -147,8 +145,6 @@ ThreadSystemPreinit(
+ 
+     InitializeListHead(&m_threadSystemData.ReadyThreadsList);
+     LockInit(&m_threadSystemData.ReadyThreadsLock);
+-
+-    m_threadSystemData.NumberOfThreads = 0;
+ }
+ 
+ STATUS
+@@ -332,7 +328,6 @@ ThreadCreateEx(
+     status = _ThreadInit(Name, Priority, &pThread, TRUE);
+     if (!SUCCEEDED(status))
+     {
+-        LOG_ERROR("Failed to create thread: name=%s, TID=%x\n ", pThread->Name, pThread->Id);
+         LOG_FUNC_ERROR("_ThreadInit", status);
+         return status;
+     }
+@@ -448,9 +443,7 @@ ThreadTick(
+     if (++pCpu->ThreadData.RunningThreadTicks >= THREAD_TIME_SLICE)
+     {
+         LOG_TRACE_THREAD("Will yield on return\n");
+-        //pCpu->ThreadData.YieldOnInterruptReturn = TRUE;
+-        ThreadYield();
+-        // The thread will always yield when the time slice expires, regardless of the value of the removed flag
++        pCpu->ThreadData.YieldOnInterruptReturn = TRUE;
+     }
+ }
+ 
+@@ -571,9 +564,6 @@ ThreadExit(
+ 
+     ProcessNotifyThreadTermination(pThread);
+ 
+-    LOG("Exiting thread: name=%s, TID=%x\n", pThread->Name, pThread->Id);
+-    m_threadSystemData.NumberOfThreads -= 1;
+-
+     LockAcquire(&m_threadSystemData.ReadyThreadsLock, &oldState);
+     _ThreadSchedule();
+     NOT_REACHED;
+@@ -700,33 +690,6 @@ ThreadExecuteForEachThreadEntry(
+     return status;
+ }
+ 
+-STATUS
+-ThreadExecuteForEachReadyThreadEntry(
+-	IN      PFUNC_ListFunction  Function,
+-	IN_OPT  PVOID               Context
+-)
+-{
+-	STATUS status;
+-	INTR_STATE oldState;
+-
+-	if (NULL == Function)
+-	{
+-		return STATUS_INVALID_PARAMETER1;
+-	}
+-
+-	status = STATUS_SUCCESS;
+-
+-	LockAcquire(&m_threadSystemData.ReadyThreadsLock, &oldState);
+-	status = ForEachElementExecute(&m_threadSystemData.ReadyThreadsList,
+-		Function,
+-		Context,
+-		FALSE
+-	);
+-	LockRelease(&m_threadSystemData.ReadyThreadsLock, oldState);
+-
+-	return status;
+-}
+-
+ void
+ SetCurrentThread(
+     IN      PTHREAD     Thread
+@@ -827,15 +790,9 @@ _ThreadInit(
+ 
+         strcpy(pThread->Name, Name);
+ 
+-        pThread->Id = _ThreadSystemGetNextTid() << 4; // 0x10 = 16
++        pThread->Id = _ThreadSystemGetNextTid();
+         pThread->State = ThreadStateBlocked;
+         pThread->Priority = Priority;
+-        if (GetCurrentThread() != NULL) {
+-			pThread->ParentThreadId = GetCurrentThread()->Id;
+-        }
+-
+-        LOG("Created thread: name=%s, TID=%x\n", pThread->Name, pThread->Id);
+-        m_threadSystemData.NumberOfThreads += 1;
+ 
+         LockInit(&pThread->BlockLock);
+ 
+@@ -1281,8 +1238,4 @@ _ThreadKernelFunction(
+ 
+     ThreadExit(exitStatus);
+     NOT_REACHED;
+-}
+-
+-QWORD GetNumberOfThreads() {
+-    return m_threadSystemData.NumberOfThreads;
+ }
+\ No newline at end of file
+diff --git a/src/shared/kernel/thread.h b/src/shared/kernel/thread.h
+index 2984283..05efb4a 100644
+--- a/src/shared/kernel/thread.h
++++ b/src/shared/kernel/thread.h
+@@ -119,6 +119,3 @@ THREAD_PRIORITY
+ ThreadGetPriority(
+     IN_OPT  PTHREAD             Thread
+     );
+-
+-
+-QWORD GetNumberOfThreads();
+\ No newline at end of file
