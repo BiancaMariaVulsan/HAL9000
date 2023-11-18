@@ -143,6 +143,17 @@ _IsrExceptionHandler(
         LOG_TRACE_EXCEPTION("RSP[0]: 0x%X\n", *((QWORD*)StackPointer->Registers.Rsp));
     }
 
+    if (!exceptionHandled)
+    {
+        if (!GdtIsSegmentPrivileged((WORD)StackPointer->Registers.CS))
+        {
+            PPROCESS crtProcess = GetCurrentProcess();
+            LOG_TRACE_EXCEPTION("Terminating process %s\n", ProcessGetName(crtProcess));
+
+            ProcessTerminate(crtProcess);
+        }
+    }
+
     // no use in logging if we solved the problem
     if (!exceptionHandled)
     {

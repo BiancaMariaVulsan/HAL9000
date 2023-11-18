@@ -1,0 +1,687 @@
+diff --git a/lab2.diff b/lab2.diff
+deleted file mode 100644
+index 651ddba..0000000
+--- a/lab2.diff
++++ /dev/null
+@@ -1,321 +0,0 @@
+-diff --git a/.gitignore b/.gitignore
+-index b2b2dbd..39e6663 100644
+---- a/.gitignore
+-+++ b/.gitignore
+-@@ -73,6 +73,4 @@ VM/*
+- 
+- # HAL tests
+- *.result
+--*.outcome
+--
+--src-project/
+-\ No newline at end of file
+-+*.outcome
+-\ No newline at end of file
+-diff --git a/PXE/Tests.module b/PXE/Tests.module
+-index d167a52..e69de29 100644
+---- a/PXE/Tests.module
+-+++ b/PXE/Tests.module
+-@@ -1 +0,0 @@
+--/threads
+-\ No newline at end of file
+-diff --git a/src/.vs/ProjectSettings.json b/src/.vs/ProjectSettings.json
+-deleted file mode 100644
+-index 0cf5ea5..0000000
+---- a/src/.vs/ProjectSettings.json
+-+++ /dev/null
+-@@ -1,3 +0,0 @@
+--{
+--  "CurrentProjectSetting": "No Configurations"
+--}
+-\ No newline at end of file
+-diff --git a/src/.vs/VSWorkspaceState.json b/src/.vs/VSWorkspaceState.json
+-deleted file mode 100644
+-index 6b61141..0000000
+---- a/src/.vs/VSWorkspaceState.json
+-+++ /dev/null
+-@@ -1,6 +0,0 @@
+--{
+--  "ExpandedNodes": [
+--    ""
+--  ],
+--  "PreviewInSolutionExplorer": false
+--}
+-\ No newline at end of file
+-diff --git a/src/.vs/slnx.sqlite b/src/.vs/slnx.sqlite
+-deleted file mode 100644
+-index ae84063..0000000
+-Binary files a/src/.vs/slnx.sqlite and /dev/null differ
+-diff --git a/src/.vs/src/FileContentIndex/f70e6c7e-e52f-4d6d-bbbd-a2c8be927d69.vsidx b/src/.vs/src/FileContentIndex/f70e6c7e-e52f-4d6d-bbbd-a2c8be927d69.vsidx
+-deleted file mode 100644
+-index dfdd87c..0000000
+-Binary files a/src/.vs/src/FileContentIndex/f70e6c7e-e52f-4d6d-bbbd-a2c8be927d69.vsidx and /dev/null differ
+-diff --git a/src/.vs/src/v17/.wsuo b/src/.vs/src/v17/.wsuo
+-deleted file mode 100644
+-index 7490f05..0000000
+-Binary files a/src/.vs/src/v17/.wsuo and /dev/null differ
+-diff --git a/src/HAL9000/headers/cmd_thread_helper.h b/src/HAL9000/headers/cmd_thread_helper.h
+-index b62f4c2..0461ea0 100644
+---- a/src/HAL9000/headers/cmd_thread_helper.h
+-+++ b/src/HAL9000/headers/cmd_thread_helper.h
+-@@ -4,7 +4,6 @@
+- 
+- FUNC_GenericCommand CmdListCpus;
+- FUNC_GenericCommand CmdListThreads;
+--FUNC_GenericCommand CmdListReadyThreads;
+- FUNC_GenericCommand CmdYield;
+- FUNC_GenericCommand CmdRunTest;
+- FUNC_GenericCommand CmdSendIpi;
+-diff --git a/src/HAL9000/headers/thread_internal.h b/src/HAL9000/headers/thread_internal.h
+-index 348ba0b..789fe68 100644
+---- a/src/HAL9000/headers/thread_internal.h
+-+++ b/src/HAL9000/headers/thread_internal.h
+-@@ -39,7 +39,6 @@ typedef struct _THREAD
+- 
+-     TID                     Id;
+-     char*                   Name;
+--    TID                     ParentThreadId;
+- 
+-     // Currently the thread priority is not used for anything
+-     THREAD_PRIORITY         Priority;
+-@@ -253,19 +252,6 @@ ThreadExecuteForEachThreadEntry(
+-     IN_OPT  PVOID               Context
+-     );
+- 
+--//******************************************************************************
+--// Function:     ThreadExecuteForEachThreadEntry
+--// Description:  Iterates over the all threads list and invokes Function on each
+--//               entry passing an additional optional Context parameter.
+--// Returns:      STATUS
+--// Parameter:    IN PFUNC_ListFunction Function
+--// Parameter:    IN_OPT PVOID Context
+--//******************************************************************************
+--STATUS
+--ThreadExecuteForEachReadyThreadEntry(
+--    IN      PFUNC_ListFunction  Function,
+--    IN_OPT  PVOID               Context
+--);
+- 
+- //******************************************************************************O
+- // Function:     GetCurrentThread
+-diff --git a/src/HAL9000/src/cmd_interpreter.c b/src/HAL9000/src/cmd_interpreter.c
+-index 36cf29b..d987fe9 100644
+---- a/src/HAL9000/src/cmd_interpreter.c
+-+++ b/src/HAL9000/src/cmd_interpreter.c
+-@@ -68,7 +68,6 @@ static const COMMAND_DEFINITION COMMANDS[] =
+-                 "\n\t$TIMES - number of times to wait for timer, valid only if periodic", CmdTestTimer, 1, 3},
+- 
+-     { "threads", "Displays all threads", CmdListThreads, 0, 0},
+--    { "readythreads", "Displays all threads", CmdListReadyThreads, 0, 0},
+-     { "run", "$TEST [$NO_OF_THREADS]\n\tRuns the $TEST specified"
+-              "\n\t$NO_OF_THREADS the number of threads for running the test,"
+-              "if the number is not specified then it will run on 2 * NumberOfProcessors",
+-diff --git a/src/HAL9000/src/cmd_thread_helper.c b/src/HAL9000/src/cmd_thread_helper.c
+-index 78bec7e..56e69af 100644
+---- a/src/HAL9000/src/cmd_thread_helper.c
+-+++ b/src/HAL9000/src/cmd_thread_helper.c
+-@@ -17,7 +17,6 @@
+- #include "vmm.h"
+- #include "pit.h"
+- 
+--#include "thread.h"
+- 
+- #pragma warning(push)
+- 
+-@@ -45,7 +44,6 @@ typedef struct _BOUND_THREAD_CTX
+- static FUNC_ThreadStart     _ThreadCpuBound;
+- static FUNC_ThreadStart     _ThreadIoBound;
+- 
+--
+- static
+- void
+- _CmdHelperPrintThreadFunctions(
+-@@ -130,11 +128,9 @@ void
+-     STATUS status;
+- 
+-     ASSERT(NumberOfParameters == 0);
+--    LOG("Number of threads in the system: %d", GetNumberOfThreads());
+- 
+-     LOG("%7s", "TID|");
+-     LOG("%20s", "Name|");
+--	LOG("%7s", "TID|");
+-     LOG("%5s", "Prio|");
+-     LOG("%8s", "State|");
+-     LOG("%10s", "Cmp ticks|");
+-@@ -147,30 +143,6 @@ void
+-     ASSERT( SUCCEEDED(status));
+- }
+- 
+--void
+--(__cdecl CmdListReadyThreads)(
+--	IN          QWORD       NumberOfParameters
+--	)
+--{
+--	STATUS status;
+--
+--	ASSERT(NumberOfParameters == 0);
+--
+--	LOG("%7s", "TID|");
+--	LOG("%20s", "Name|");
+--	LOG("%7s", "TID|");
+--	LOG("%5s", "Prio|");
+--	LOG("%8s", "State|");
+--	LOG("%10s", "Cmp ticks|");
+--	LOG("%10s", "Prt ticks|");
+--	LOG("%10s", "Ttl ticks|");
+--	LOG("%10s", "Process|");
+--	LOG("\n");
+--
+--	status = ThreadExecuteForEachReadyThreadEntry(_CmdThreadPrint, NULL);
+--	ASSERT(SUCCEEDED(status));
+--}
+--
+- void
+- (__cdecl CmdYield)(
+-     IN          QWORD       NumberOfParameters
+-diff --git a/src/HAL9000/src/iomu.c b/src/HAL9000/src/iomu.c
+-index f4be828..cf49feb 100644
+---- a/src/HAL9000/src/iomu.c
+-+++ b/src/HAL9000/src/iomu.c
+-@@ -28,7 +28,7 @@
+- #define PIC_MASTER_OFFSET                   0x20
+- #define PIC_SLAVE_OFFSET                    0x28
+- 
+--#define SCHEDULER_TIMER_INTERRUPT_TIME_US   (10*MS_IN_US)
+-+#define SCHEDULER_TIMER_INTERRUPT_TIME_US   (40*MS_IN_US)
+- 
+- #define HAL9000_SYSTEM_FILE_NAME            "HAL9000.ini"
+- 
+-diff --git a/src/HAL9000/src/thread.c b/src/HAL9000/src/thread.c
+-index 827f0cd..3ec2095 100644
+---- a/src/HAL9000/src/thread.c
+-+++ b/src/HAL9000/src/thread.c
+-@@ -12,7 +12,7 @@
+- 
+- #define TID_INCREMENT               4
+- 
+--#define THREAD_TIME_SLICE           4
+-+#define THREAD_TIME_SLICE           1
+- 
+- extern void ThreadStart();
+- 
+-@@ -36,8 +36,6 @@ typedef struct _THREAD_SYSTEM_DATA
+- 
+-     _Guarded_by_(ReadyThreadsLock)
+-     LIST_ENTRY          ReadyThreadsList;
+--
+--    QWORD               NumberOfThreads;
+- } THREAD_SYSTEM_DATA, *PTHREAD_SYSTEM_DATA;
+- 
+- static THREAD_SYSTEM_DATA m_threadSystemData;
+-@@ -147,8 +145,6 @@ ThreadSystemPreinit(
+- 
+-     InitializeListHead(&m_threadSystemData.ReadyThreadsList);
+-     LockInit(&m_threadSystemData.ReadyThreadsLock);
+--
+--    m_threadSystemData.NumberOfThreads = 0;
+- }
+- 
+- STATUS
+-@@ -332,7 +328,6 @@ ThreadCreateEx(
+-     status = _ThreadInit(Name, Priority, &pThread, TRUE);
+-     if (!SUCCEEDED(status))
+-     {
+--        LOG_ERROR("Failed to create thread: name=%s, TID=%x\n ", pThread->Name, pThread->Id);
+-         LOG_FUNC_ERROR("_ThreadInit", status);
+-         return status;
+-     }
+-@@ -448,9 +443,7 @@ ThreadTick(
+-     if (++pCpu->ThreadData.RunningThreadTicks >= THREAD_TIME_SLICE)
+-     {
+-         LOG_TRACE_THREAD("Will yield on return\n");
+--        //pCpu->ThreadData.YieldOnInterruptReturn = TRUE;
+--        ThreadYield();
+--        // The thread will always yield when the time slice expires, regardless of the value of the removed flag
+-+        pCpu->ThreadData.YieldOnInterruptReturn = TRUE;
+-     }
+- }
+- 
+-@@ -571,9 +564,6 @@ ThreadExit(
+- 
+-     ProcessNotifyThreadTermination(pThread);
+- 
+--    LOG("Exiting thread: name=%s, TID=%x\n", pThread->Name, pThread->Id);
+--    m_threadSystemData.NumberOfThreads -= 1;
+--
+-     LockAcquire(&m_threadSystemData.ReadyThreadsLock, &oldState);
+-     _ThreadSchedule();
+-     NOT_REACHED;
+-@@ -700,33 +690,6 @@ ThreadExecuteForEachThreadEntry(
+-     return status;
+- }
+- 
+--STATUS
+--ThreadExecuteForEachReadyThreadEntry(
+--	IN      PFUNC_ListFunction  Function,
+--	IN_OPT  PVOID               Context
+--)
+--{
+--	STATUS status;
+--	INTR_STATE oldState;
+--
+--	if (NULL == Function)
+--	{
+--		return STATUS_INVALID_PARAMETER1;
+--	}
+--
+--	status = STATUS_SUCCESS;
+--
+--	LockAcquire(&m_threadSystemData.ReadyThreadsLock, &oldState);
+--	status = ForEachElementExecute(&m_threadSystemData.ReadyThreadsList,
+--		Function,
+--		Context,
+--		FALSE
+--	);
+--	LockRelease(&m_threadSystemData.ReadyThreadsLock, oldState);
+--
+--	return status;
+--}
+--
+- void
+- SetCurrentThread(
+-     IN      PTHREAD     Thread
+-@@ -827,15 +790,9 @@ _ThreadInit(
+- 
+-         strcpy(pThread->Name, Name);
+- 
+--        pThread->Id = _ThreadSystemGetNextTid() << 4; // 0x10 = 16
+-+        pThread->Id = _ThreadSystemGetNextTid();
+-         pThread->State = ThreadStateBlocked;
+-         pThread->Priority = Priority;
+--        if (GetCurrentThread() != NULL) {
+--			pThread->ParentThreadId = GetCurrentThread()->Id;
+--        }
+--
+--        LOG("Created thread: name=%s, TID=%x\n", pThread->Name, pThread->Id);
+--        m_threadSystemData.NumberOfThreads += 1;
+- 
+-         LockInit(&pThread->BlockLock);
+- 
+-@@ -1281,8 +1238,4 @@ _ThreadKernelFunction(
+- 
+-     ThreadExit(exitStatus);
+-     NOT_REACHED;
+--}
+--
+--QWORD GetNumberOfThreads() {
+--    return m_threadSystemData.NumberOfThreads;
+- }
+-\ No newline at end of file
+-diff --git a/src/shared/kernel/thread.h b/src/shared/kernel/thread.h
+-index 2984283..05efb4a 100644
+---- a/src/shared/kernel/thread.h
+-+++ b/src/shared/kernel/thread.h
+-@@ -119,6 +119,3 @@ THREAD_PRIORITY
+- ThreadGetPriority(
+-     IN_OPT  PTHREAD             Thread
+-     );
+--
+--
+--QWORD GetNumberOfThreads();
+-\ No newline at end of file
+diff --git a/lab3.diff b/lab3.diff
+deleted file mode 100644
+index c616a5c..0000000
+--- a/lab3.diff
++++ /dev/null
+@@ -1,13 +0,0 @@
+-diff --git a/src/HAL9000/src/system.c b/src/HAL9000/src/system.c
+-index 48aac9e..6cf5bcc 100644
+---- a/src/HAL9000/src/system.c
+-+++ b/src/HAL9000/src/system.c
+-@@ -70,7 +70,7 @@ SystemInit(
+-     status = STATUS_SUCCESS;
+-     pCpu = NULL;
+- 
+--    LogSystemInit(LogLevelError,
+-+    LogSystemInit(LogLevelInfo,
+-                   LogComponentInterrupt | LogComponentIo | LogComponentAcpi,
+-                   TRUE
+-                   );
+diff --git a/lab4.diff b/lab4.diff
+deleted file mode 100644
+index 7466933..0000000
+--- a/lab4.diff
++++ /dev/null
+@@ -1,279 +0,0 @@
+-diff --git a/src/HAL9000/HAL9000.vcxproj b/src/HAL9000/HAL9000.vcxproj
+-index dfc3040..779c36a 100644
+---- a/src/HAL9000/HAL9000.vcxproj
+-+++ b/src/HAL9000/HAL9000.vcxproj
+-@@ -181,8 +181,6 @@
+-     </PostBuildEvent>
+-   </ItemDefinitionGroup>
+-   <ItemGroup>
+--    <ClCompile Include="semaphore.cpp" />
+--    <ClCompile Include="semaphore_bw.cpp" />
+-     <ClCompile Include="src\acpi_interface.c" />
+-     <ClCompile Include="src\acpi_osl.c" />
+-     <ClCompile Include="src\ap_tramp.c" />
+-@@ -368,8 +366,6 @@
+-     <ClInclude Include="headers\um_application.h" />
+-     <ClInclude Include="headers\vmm.h" />
+-     <ClInclude Include="headers\vm_reservation_space.h" />
+--    <ClInclude Include="semaphore.h" />
+--    <ClInclude Include="semaphore_bw.h" />
+-   </ItemGroup>
+-   <ItemGroup>
+-     <YASM Include="src\_mboot32.yasm">
+-diff --git a/src/HAL9000/HAL9000.vcxproj.filters b/src/HAL9000/HAL9000.vcxproj.filters
+-index 6fabf45..0d3b52f 100644
+---- a/src/HAL9000/HAL9000.vcxproj.filters
+-+++ b/src/HAL9000/HAL9000.vcxproj.filters
+-@@ -402,12 +402,6 @@
+-     <ClCompile Include="src\test_process.c">
+-       <Filter>Source Files\debug\test\userprog</Filter>
+-     </ClCompile>
+--    <ClCompile Include="semaphore.cpp">
+--      <Filter>Source Files\executive</Filter>
+--    </ClCompile>
+--    <ClCompile Include="semaphore_bw.cpp">
+--      <Filter>Source Files\executive</Filter>
+--    </ClCompile>
+-   </ItemGroup>
+-   <ItemGroup>
+-     <ClInclude Include="headers\HAL9000.h">
+-@@ -710,12 +704,6 @@
+-     <ClInclude Include="headers\test_process.h">
+-       <Filter>Header Files\debug\test\userprog</Filter>
+-     </ClInclude>
+--    <ClInclude Include="semaphore.h">
+--      <Filter>Header Files\executive</Filter>
+--    </ClInclude>
+--    <ClInclude Include="semaphore_bw.h">
+--      <Filter>Source Files\executive</Filter>
+--    </ClInclude>
+-   </ItemGroup>
+-   <ItemGroup>
+-     <None Include="src\defines.yasm">
+-diff --git a/src/HAL9000/headers/cmd_thread_helper.h b/src/HAL9000/headers/cmd_thread_helper.h
+-index d1838bc..0461ea0 100644
+---- a/src/HAL9000/headers/cmd_thread_helper.h
+-+++ b/src/HAL9000/headers/cmd_thread_helper.h
+-@@ -4,7 +4,6 @@
+- 
+- FUNC_GenericCommand CmdListCpus;
+- FUNC_GenericCommand CmdListThreads;
+--FUNC_GenericCommand CmdTestSemaphores;
+- FUNC_GenericCommand CmdYield;
+- FUNC_GenericCommand CmdRunTest;
+- FUNC_GenericCommand CmdSendIpi;
+-diff --git a/src/HAL9000/semaphore.cpp b/src/HAL9000/semaphore.cpp
+-deleted file mode 100644
+-index 52b6d87..0000000
+---- a/src/HAL9000/semaphore.cpp
+-+++ /dev/null
+-@@ -1,65 +0,0 @@
+--#include "HAL9000.h"
+--#include "thread_internal.h"
+--#include "semaphore.h"
+--
+--void SemaphoreInit(PSEMAPHORE Semaphore, DWORD InitialValue)
+--{
+--	ASSERT(Semaphore != NULL);
+--
+--	memzero(Semaphore, sizeof(SEMAPHORE));
+--
+--	LockInit(&Semaphore->MutexLock);
+--	InitializeListHead(&Semaphore->WaitingList);
+--	Semaphore->Value = InitialValue;
+--}
+--
+--void SemaphoreDown(PSEMAPHORE Semaphore, DWORD Value)
+--{
+--	INTR_STATE dummyState;
+--	INTR_STATE oldState;
+--	PTHREAD pCurrentThread = GetCurrentThread();
+--
+--	ASSERT(Semaphore != NULL);
+--	ASSERT(pCurrentThread != NULL);
+--
+--	oldState = CpuIntrDisable();
+--
+--	LockAcquire(&Semaphore->MutexLock, &dummyState);
+--
+--	while (Semaphore->Value < Value)
+--	{
+--		InsertTailList(&Semaphore->WaitingList, &pCurrentThread->ReadyList);
+--		ThreadTakeBlockLock();
+--		LockRelease(&Semaphore->MutexLock, dummyState);
+--		ThreadBlock();
+--		LockAcquire(&Semaphore->MutexLock, &dummyState);
+--	}
+--
+--	Semaphore->Value -= Value;
+--
+--	LockRelease(&Semaphore->MutexLock, dummyState);
+--
+--	CpuIntrSetState(oldState);
+--}
+--
+--void SemaphoreUp(PSEMAPHORE Semaphore, DWORD Value)
+--{
+--	INTR_STATE oldState;
+--	PLIST_ENTRY pEntry;
+--
+--	ASSERT(Semaphore != NULL);
+--
+--	LockAcquire(&Semaphore->MutexLock, &oldState);
+--
+--	Semaphore->Value += Value;
+--
+--	pEntry = RemoveHeadList(&Semaphore->WaitingList);
+--
+--	if (pEntry != &Semaphore->WaitingList)
+--	{
+--		PTHREAD pThread = CONTAINING_RECORD(pEntry, THREAD, ReadyList);
+--		ThreadUnblock(pThread);
+--	}
+--
+--	LockRelease(&Semaphore->MutexLock, oldState);
+--}
+-diff --git a/src/HAL9000/semaphore.h b/src/HAL9000/semaphore.h
+-deleted file mode 100644
+-index eda6cde..0000000
+---- a/src/HAL9000/semaphore.h
+-+++ /dev/null
+-@@ -1,19 +0,0 @@
+--#pragma once
+--
+--#ifndef SEMAPHORE_H
+--#define SEMAPHORE_H
+--
+--#include "HAL9000.h"
+--
+--typedef struct _SEMAPHORE
+--{
+--	DWORD Value;
+--	LOCK MutexLock;
+--	LIST_ENTRY WaitingList;
+--} SEMAPHORE, *PSEMAPHORE;
+--
+--void SemaphoreInit(PSEMAPHORE Semaphore, DWORD InitialValue);
+--void SemaphoreDown(PSEMAPHORE Semaphore, DWORD Value);
+--void SemaphoreUp(PSEMAPHORE Semaphore, DWORD Value);
+--
+--#endif // SEMAPHORE_H
+-diff --git a/src/HAL9000/semaphore_bw.cpp b/src/HAL9000/semaphore_bw.cpp
+-deleted file mode 100644
+-index ddd8437..0000000
+---- a/src/HAL9000/semaphore_bw.cpp
+-+++ /dev/null
+-@@ -1,32 +0,0 @@
+--#include "HAL9000.h"
+--#include "thread_internal.h"
+--#include "semaphore_bw.h"
+--
+--void SemaphoreInit(PSEMAPHORE_BW Semaphore, DWORD InitialValue)
+--{
+--	ASSERT(Semaphore != NULL);
+--
+--	Semaphore->Value = InitialValue;
+--}
+--
+--void SemaphoreDown(PSEMAPHORE_BW Semaphore, DWORD Value)
+--{
+--	PTHREAD pCurrentThread = GetCurrentThread();
+--
+--	ASSERT(Semaphore != NULL);
+--	ASSERT(pCurrentThread != NULL);
+--
+--	while (Semaphore->Value < Value)
+--	{
+--		// Busy-wait until the semaphore value becomes greater or equal to the requested value
+--	}
+--
+--	Semaphore->Value -= Value;
+--}
+--
+--void SemaphoreUp(PSEMAPHORE_BW Semaphore, DWORD Value)
+--{
+--	ASSERT(Semaphore != NULL);
+--
+--	Semaphore->Value += Value;
+--}
+-diff --git a/src/HAL9000/semaphore_bw.h b/src/HAL9000/semaphore_bw.h
+-deleted file mode 100644
+-index 65a6bc3..0000000
+---- a/src/HAL9000/semaphore_bw.h
+-+++ /dev/null
+-@@ -1,17 +0,0 @@
+--#pragma once
+--
+--#ifndef SEMAPHORE_BW_H
+--#define SEMAPHORE_BW_H
+--
+--#include "HAL9000.h"
+--
+--typedef struct _SEMAPHORE_BW
+--{
+--	volatile DWORD Value;
+--} SEMAPHORE_BW, *PSEMAPHORE_BW;
+--
+--void SemaphoreInit(PSEMAPHORE_BW Semaphore, DWORD InitialValue);
+--void SemaphoreDown(PSEMAPHORE_BW Semaphore, DWORD Value);
+--void SemaphoreUp(PSEMAPHORE_BW Semaphore, DWORD Value);
+--
+--#endif // SEMAPHORE_BW_H
+-diff --git a/src/HAL9000/src/cmd_interpreter.c b/src/HAL9000/src/cmd_interpreter.c
+-index 22cc706..d987fe9 100644
+---- a/src/HAL9000/src/cmd_interpreter.c
+-+++ b/src/HAL9000/src/cmd_interpreter.c
+-@@ -68,7 +68,6 @@ static const COMMAND_DEFINITION COMMANDS[] =
+-                 "\n\t$TIMES - number of times to wait for timer, valid only if periodic", CmdTestTimer, 1, 3},
+- 
+-     { "threads", "Displays all threads", CmdListThreads, 0, 0},
+--    { "testsemas", "Test Semaphore", CmdTestSemaphore, 0, 0},
+-     { "run", "$TEST [$NO_OF_THREADS]\n\tRuns the $TEST specified"
+-              "\n\t$NO_OF_THREADS the number of threads for running the test,"
+-              "if the number is not specified then it will run on 2 * NumberOfProcessors",
+-diff --git a/src/HAL9000/src/cmd_thread_helper.c b/src/HAL9000/src/cmd_thread_helper.c
+-index 079e90d..56e69af 100644
+---- a/src/HAL9000/src/cmd_thread_helper.c
+-+++ b/src/HAL9000/src/cmd_thread_helper.c
+-@@ -143,29 +143,6 @@ void
+-     ASSERT( SUCCEEDED(status));
+- }
+- 
+--void
+--(__cdecl CmdTestSemaphore)()
+--{
+--	SEMAPHORE semaphore;
+--	DWORD numCPUs = GetActiveProcessorCount();
+--	DWORD expectedValue = numCPUs - 1;
+--
+--	// Initialize the semaphore with an initial value of 0
+--	SemaphoreInit(&semaphore, 0);
+--
+--	// Send IPI to other processors to increment the semaphore
+--	for (DWORD cpu = 0; cpu < numCPUs; cpu++)
+--	{
+--		if (cpu != GetCurrentCpuNumber())
+--		{
+--			// TODO: call SmpSendGenericIpi
+--		}
+--	}
+--
+--	// Wait for all other CPUs to increment the semaphore
+--	SemaphoreDown(&semaphore, expectedValue);
+--}
+--
+- void
+- (__cdecl CmdYield)(
+-     IN          QWORD       NumberOfParameters
+-diff --git a/src/HAL9000/src/test_thread.c b/src/HAL9000/src/test_thread.c
+-index 922b34b..3ceb2dc 100644
+---- a/src/HAL9000/src/test_thread.c
+-+++ b/src/HAL9000/src/test_thread.c
+-@@ -6,6 +6,7 @@
+- 
+- #include "mutex.h"
+- 
+-+
+- FUNC_ThreadStart                TestThreadYield;
+- 
+- FUNC_ThreadStart                TestMutexes;
+diff --git a/src-project b/src-project
+deleted file mode 160000
+index 3561afc..0000000
+--- a/src-project
++++ /dev/null
+@@ -1 +0,0 @@
+-Subproject commit 3561afc58d4f6c8b40528213c0ac3419c19c4055
+diff --git a/src/HAL9000/src/system.c b/src/HAL9000/src/system.c
+index 04aae39..6cf5bcc 100644
+--- a/src/HAL9000/src/system.c
++++ b/src/HAL9000/src/system.c
+@@ -59,19 +59,6 @@ SystemPreinit(
+     ProcessSystemPreinit();
+ }
+ 
+-static
+-STATUS
+-(__cdecl _HelloIpi)(
+-    IN_OPT PVOID Context
+-    )
+-{
+-    UNREFERENCED_PARAMETER(Context);
+-
+-    LOGP("Hello\n");
+-    return STATUS_SUCCESS;
+-}
+-
+-
+ STATUS
+ SystemInit(
+     IN  ASM_PARAMETERS*     Parameters
+@@ -326,24 +313,6 @@ SystemInit(
+ 
+     LOGL("Network stack successfully initialized\n");
+ 
+-    // The last parameter represents WaitForHandling
+-    // Processors: 6, 2, 4
+-     status = SmpSendGenericIpi(_HelloIpi, NULL, NULL, NULL, FALSE);
+-    
+-    // Processors: 2, 6, 4
+-    // status = SmpSendGenericIpi(_HelloIpi, NULL, NULL, NULL, TRUE);
+-
+-    // Say Hello from each processor
+-    SMP_DESTINATION destination = { 0 };
+-    status = SmpSendGenericIpiEx(_HelloIpi, NULL, NULL, NULL, TRUE, SmpIpiSendToAllExcludingSelf,
+-        destination);
+-
+-    if (!SUCCEEDED(status))
+-    {
+-        LOG_FUNC_ERROR("SmpSendGenericIpi", status);
+-        return status;
+-    }
+-
+     return status;
+ }
+ 
