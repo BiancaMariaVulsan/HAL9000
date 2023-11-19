@@ -54,7 +54,6 @@ Entry64(
 
     gVirtualToPhysicalOffset = argv->VirtualToPhysicalOffset;
     SystemPreinit();
-
     DumpParameters(argv);
 
     status = SystemInit(argv);

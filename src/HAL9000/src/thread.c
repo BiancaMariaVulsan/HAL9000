@@ -167,7 +167,7 @@ ThreadSystemInitMainForCurrentCPU(
 
     ASSERT( NULL != pCpu );
 
-    memzero(mainThreadName, MAX_PATH + 1);
+    //memzero(mainThreadName, MAX_PATH + 1);
 
     snprintf( mainThreadName, MAX_PATH, "%s-%02x", "main", pCpu->ApicId );
 
@@ -630,8 +630,22 @@ ThreadGetName(
     IN_OPT  PTHREAD             Thread
     )
 {
-    PTHREAD pThread = Thread;
-    return pThread->Name;
+    //PTHREAD pThread = Thread;
+    //return pThread->Name;
+
+    PTHREAD pThread;
+    if (Thread != NULL) {
+        pThread = Thread;
+    }
+    else {
+        pThread = GetCurrentThread();
+    }
+
+    if (pThread != NULL) {
+        return pThread->Name;
+    }
+
+    return "";
 }
 
 TID
@@ -749,7 +763,7 @@ _ThreadInit(
             __leave;
         }
 
-        memzero(pThread, sizeof(THREAD) * 2);
+        //memzero(pThread, sizeof(THREAD) * 2);
 
         RfcPreInit(&pThread->RefCnt);
 

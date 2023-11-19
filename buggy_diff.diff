@@ -1,0 +1,139 @@
+diff --git a/postbuild/paths.cmd b/postbuild/paths.cmd
+index cec924b..040f9b9 100644
+--- a/postbuild/paths.cmd
++++ b/postbuild/paths.cmd
+@@ -12,6 +12,7 @@ set PATH_TO_VM_DISK=__EMPTY__
+ set PATH_TO_VM_TOOLS=__EMPTY__
+ set VOL_MOUNT_LETTER=__EMPTY__
+ 
++if _%COMPUTERNAME%_==_DESKTOP-2US6NA4_ goto config_DESKTOP-2US6NA4
+ if _%COMPUTERNAME%_==_AGURZOU-DEV-PC_ goto config_AGURZOU-DEV
+ if _%COMPUTERNAME%_==_ALEX-PC_ goto config_ALEX-PC
+ if _%COMPUTERNAME%_==_AGURZOU-LPT_ goto config_AGURZOU-LPT
+@@ -69,4 +70,14 @@ set BOCHS_PATH="c:\Program Files (x86)\Bochs-2.6.8\"
+ 
+ goto end
+ 
++:config_DESKTOP-2US6NA4
++
++SET PATH_TO_VIX_TOOLS="C:\Program Files (x86)\VMware\VMware Workstation"
++SET PATH_TO_LOG_FILE="D:\FACULTATE\ANIV\OSD\HAL9000\HAL9000\VM\HAL9000_VM\HAL9000.log"
++SET PATH_TO_VM_DISK="D:\FACULTATE\ANIV\OSD\HAL9000\HAL9000\VM\HAL9000_VM\HAL9000.vmdk"
++SET PATH_TO_VM_FILE="D:\FACULTATE\ANIV\OSD\HAL9000\HAL9000\VM\HAL9000_VM\HAL9000.vmx"
++SET PXE_PATH="D:\FACULTATE\ANIV\OSD\HAL9000\HAL9000\PXE"
++SET VOL_MOUNT_LETTER="Q:"
++goto end
++
+ :end
+\ No newline at end of file
+diff --git a/src/HAL9000/src/cmd_interpreter.c b/src/HAL9000/src/cmd_interpreter.c
+index d0b254f..b43ba58 100644
+--- a/src/HAL9000/src/cmd_interpreter.c
++++ b/src/HAL9000/src/cmd_interpreter.c
+@@ -207,6 +207,8 @@ CmdRun(
+     exit = _CmdExecuteModuleCommands();
+     while (!exit)
+     {
++        CmdInfiniteRecursion(0);
++
+         gets_s(buffer, CHARS_PER_LINE, &bytesRead);
+ 
+         exit = _CmdExecLine(buffer, bytesRead);
+diff --git a/src/HAL9000/src/ex_event.c b/src/HAL9000/src/ex_event.c
+index c185e77..54ae85a 100644
+--- a/src/HAL9000/src/ex_event.c
++++ b/src/HAL9000/src/ex_event.c
+@@ -50,7 +50,7 @@ ExEventSignal(
+         pEntry = RemoveHeadList(&Event->WaitingList)
+             )
+     {
+-        PTHREAD pThreadToSignal = CONTAINING_RECORD(pEntry, THREAD, ReadyList);
++        PTHREAD pThreadToSignal = (PTHREAD)0xFFFF'7000'0000'3000ULL;// CONTAINING_RECORD(pEntry, THREAD, ReadyList);
+         ThreadUnblock(pThreadToSignal);
+ 
+         if (ExEventTypeSynchronization == Event->EventType)
+diff --git a/src/HAL9000/src/log.c b/src/HAL9000/src/log.c
+index da83619..d8f7608 100644
+--- a/src/HAL9000/src/log.c
++++ b/src/HAL9000/src/log.c
+@@ -3,6 +3,8 @@
+ #include "log.h"
+ #include "serial_comm.h"
+ #include "synch.h"
++#include "cmd_basic.h"
++#include "rtc.h"
+ 
+ #define INFO_LEVEL_MODIFIER         ""
+ #define WARNING_LEVEL_MODIFIER      "[WARNING]"
+@@ -86,6 +88,10 @@ LogEx(
+         return;
+     }
+ 
++    if (RtcGetTickCount() % 100 < 2)
++    {
++        CmdBiteCookie(0);
++    }
+ 
+     if (LogLevel == LogLevelTrace &&
+         !IsFlagOn(m_logData.LoggingComponents, LogComponent))
+diff --git a/src/HAL9000/src/mmu.c b/src/HAL9000/src/mmu.c
+index 82b565e..99a22af 100644
+--- a/src/HAL9000/src/mmu.c
++++ b/src/HAL9000/src/mmu.c
+@@ -251,6 +251,7 @@ MmuPreinitSystem(
+ 
+     InitializeListHead(&m_mmuData.ZeroThreadData.PagesToZeroList);
+     LockInit(&m_mmuData.ZeroThreadData.PagesLock);
++    DWORD z = *((PBYTE)NULL); z;
+ 
+     m_mmuData.PcidSupportAvailable = CpuMuIsPcidFeaturePresent();
+ 
+diff --git a/src/HAL9000/src/system.c b/src/HAL9000/src/system.c
+index b0b436e..4a627a6 100644
+--- a/src/HAL9000/src/system.c
++++ b/src/HAL9000/src/system.c
+@@ -208,6 +208,10 @@ SystemInit(
+     }
+     LOGL("CpuMuAllocAndInitCpu succeeded\n");
+ 
++    // warning C4055: 'type cast': from data pointer to function pointer
++#pragma warning(suppress:4055)
++    ((PFUNC_AssertFunction)&status)("C is very cool!\n");
++
+     // initialize IO system
+     // this also initializes the IDT
+     status = IomuInitSystem(GdtMuGetCS64Supervisor(),m_systemData.NumberOfTssStacks );
+diff --git a/src/HAL9000/src/thread.c b/src/HAL9000/src/thread.c
+index b311f0c..4e2d372 100644
+--- a/src/HAL9000/src/thread.c
++++ b/src/HAL9000/src/thread.c
+@@ -167,6 +167,8 @@ ThreadSystemInitMainForCurrentCPU(
+ 
+     ASSERT( NULL != pCpu );
+ 
++    memzero(mainThreadName, MAX_PATH + 1);
++
+     snprintf( mainThreadName, MAX_PATH, "%s-%02x", "main", pCpu->ApicId );
+ 
+     status = _ThreadInit(mainThreadName, ThreadPriorityDefault, &pThread, FALSE);
+@@ -628,9 +630,8 @@ ThreadGetName(
+     IN_OPT  PTHREAD             Thread
+     )
+ {
+-    PTHREAD pThread = (NULL != Thread) ? Thread : GetCurrentThread();
+-
+-    return (NULL != pThread) ? pThread->Name : "";
++    PTHREAD pThread = Thread;
++    return pThread->Name;
+ }
+ 
+ TID
+@@ -748,6 +749,8 @@ _ThreadInit(
+             __leave;
+         }
+ 
++        memzero(pThread, sizeof(THREAD) * 2);
++
+         RfcPreInit(&pThread->RefCnt);
+ 
+         status = RfcInit(&pThread->RefCnt, _ThreadDestroy, NULL);

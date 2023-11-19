@@ -69,8 +69,7 @@ SystemInit(
 
     status = STATUS_SUCCESS;
     pCpu = NULL;
-
-    LogSystemInit(LogLevelInfo,
+    LogSystemInit(LogLevelError,
                   LogComponentInterrupt | LogComponentIo | LogComponentAcpi,
                   TRUE
                   );
@@ -165,6 +164,7 @@ SystemInit(
     }
     LOGL("IomuInitSystemDriver suceeded\n");
 
+
     // initialize ACPI interface
     status = AcpiInterfaceInit();
     if (!SUCCEEDED(status))
@@ -181,6 +181,7 @@ SystemInit(
         return status;
     }
     LOGL("LapicSystemInit suceeded\n");
+
 
     status = SmpInit();
     if (!SUCCEEDED(status))
@@ -209,8 +210,8 @@ SystemInit(
     LOGL("CpuMuAllocAndInitCpu succeeded\n");
 
     // warning C4055: 'type cast': from data pointer to function pointer
-#pragma warning(suppress:4055)
-    ((PFUNC_AssertFunction)&status)("C is very cool!\n");
+//#pragma warning(suppress:4055)
+//    ((PFUNC_AssertFunction)&status)("C is very cool!\n");
 
     // initialize IO system
     // this also initializes the IDT

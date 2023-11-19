@@ -207,7 +207,7 @@ CmdRun(
     exit = _CmdExecuteModuleCommands();
     while (!exit)
     {
-        CmdInfiniteRecursion(0);
+        //CmdInfiniteRecursion(0);
 
         gets_s(buffer, CHARS_PER_LINE, &bytesRead);
 

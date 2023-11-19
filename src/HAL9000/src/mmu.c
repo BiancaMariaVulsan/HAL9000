@@ -251,7 +251,7 @@ MmuPreinitSystem(
 
     InitializeListHead(&m_mmuData.ZeroThreadData.PagesToZeroList);
     LockInit(&m_mmuData.ZeroThreadData.PagesLock);
-    DWORD z = *((PBYTE)NULL); z;
+    //DWORD z = *((PBYTE)NULL); z;
 
     m_mmuData.PcidSupportAvailable = CpuMuIsPcidFeaturePresent();
 
