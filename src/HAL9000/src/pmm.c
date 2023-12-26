@@ -154,6 +154,13 @@ PmmReserveMemoryEx(
 
     INTR_STATE oldState;
 
+    // Virtual Memory 2. Log the physical range allocated each time a physical frame is reserved. 
+    // If the reservation asked, for example, is 3 frames, then something like this should appear in the logs: "Physical range allocated: (0x1000 - 0x3FFF)!\n". 
+    // Denote that this reservation started with the first frame starting from 0x1000.
+    LOG_FUNC_START;
+    LOG("Physical range allocated: (0x%X - 0x%X)!\n", MinPhysAddr, (QWORD)MinPhysAddr + NoOfFrames * PAGE_SIZE - 1);
+    LOG_FUNC_END;
+
     if( 0 == NoOfFrames )
     {
         return NULL;

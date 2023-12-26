@@ -379,6 +379,17 @@ ProcessTerminate(
     pCurrentThread = GetCurrentThread();
     bFoundCurThreadInProcess = FALSE;
 
+    // Virtual Memory 4. Maintain a list of physical to virtual address mappings for each process. Log this list each time a process is destroyed.
+    for (PLIST_ENTRY pEntry = Process->FrameMappingsHead.Flink;
+		 pEntry != &Process->FrameMappingsHead;
+		 pEntry = pEntry->Flink)
+	{
+		PFRAME_MAPPING pFrameMapping = CONTAINING_RECORD(pEntry, FRAME_MAPPING, ListEntry);
+
+        LOG_TRACE_PROCESS("Process [%s] has frame mapping for frame 0x%X with virtual address 0x%X\n", ProcessGetName(Process), 
+            pFrameMapping->PhysicalAddress, pFrameMapping->VirtualAddress);
+	}
+
     // Go through the list of threads and notify each thread of termination
     // For the current thread (if it belongs to the process being terminated)
     // explicitly call ThreadExit
@@ -515,6 +526,9 @@ _ProcessInit(
         MutexAcquire(&m_processData.ProcessListLock);
         InsertTailList(&m_processData.ProcessList, &pProcess->NextProcess);
         MutexRelease(&m_processData.ProcessListLock);
+
+        InitializeListHead(&pProcess->FrameMappingsHead);
+        LockInit(&pProcess->FrameMapLock);
 
         LOG_TRACE_PROCESS("Process with PID 0x%X created\n", pProcess->Id);
     }

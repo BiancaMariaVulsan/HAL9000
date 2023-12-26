@@ -65,7 +65,16 @@ typedef struct _VMM_RETRIEVE_PHYS_ACCESS_PAGE_WALK_CONTEXT
     BOOLEAN                         ClearDirty;
 } VMM_RETRIEVE_PHYS_ACCESS_PAGE_WALK_CONTEXT, *PVMM_RETRIEVE_PHYS_ACCESS_PAGE_WALK_CONTEXT;
 
+
 static VMM_DATA m_vmmData;
+
+static
+ void
+ _VmmAddFrameMappings(
+    IN          PHYSICAL_ADDRESS    PhysicalAddress,
+    IN          PVOID               VirtualAddress,
+    IN          DWORD               FrameCount
+     );
 
 static
 void
@@ -609,6 +618,11 @@ VmmAllocRegionEx(
                                      PagingData
                 );
 
+                if (PagingData != NULL && !PagingData->Data.KernelSpace)
+                {
+                    _VmmAddFrameMappings(pa, pBaseAddress, noOfFrames);
+                }
+
                 // Check if the mapping is backed up by a file
                 if (FileObject != NULL)
                 {
@@ -683,6 +697,30 @@ VmmAllocRegionEx(
     return pBaseAddress;
 }
 
+static
+STATUS
+(__cdecl _SearchFrameInProcessList)(
+    IN       PLIST_ENTRY     ListEntry,
+    IN_OPT   PVOID           Context
+     ) {
+    ASSERT(Context != NULL);
+    ASSERT(NULL != ListEntry);
+    
+    PVOID * FrameContext = (PVOID*)Context;
+    PVOID pVirtualAddress = (PVOID)FrameContext[0];
+    
+    PFRAME_MAPPING CurrentFrame = CONTAINING_RECORD(ListEntry, FRAME_MAPPING, ListEntry);
+    
+    if (AlignAddressLower(CurrentFrame->VirtualAddress, PAGE_SIZE) == AlignAddressLower(pVirtualAddress, PAGE_SIZE)) {
+        FrameContext[1] = CurrentFrame;
+        
+        //LOG("Found frame with pa %x and va %x\n", CurrentFrame->PhysicalAddress, CurrentFrame->VirtualAddress);
+            
+        return STATUS_ELEMENT_FOUND;
+    }
+    return STATUS_SUCCESS;  
+}
+
 void
 VmmFreeRegionEx(
     IN      PVOID                   Address,
@@ -699,33 +737,112 @@ VmmFreeRegionEx(
     QWORD alignedSize;
 
     ASSERT(Address != NULL);
-    ASSERT(IsBooleanFlagOn( FreeType, VMM_FREE_TYPE_RELEASE ) ^ IsBooleanFlagOn(FreeType, VMM_FREE_TYPE_DECOMMIT ));
+    ASSERT(IsBooleanFlagOn(FreeType, VMM_FREE_TYPE_RELEASE) ^ IsBooleanFlagOn(FreeType, VMM_FREE_TYPE_DECOMMIT));
     ASSERT((IsBooleanFlagOn(FreeType, VMM_FREE_TYPE_RELEASE) && (Size == 0))
-           || (IsBooleanFlagOn(FreeType, VMM_FREE_TYPE_DECOMMIT) && (Size != 0)));
+        || (IsBooleanFlagOn(FreeType, VMM_FREE_TYPE_DECOMMIT) && (Size != 0)));
 
     alignedAddress = NULL;
     alignedSize = 0;
 
     VmReservationSpaceFreeRegion((VaSpace == NULL) ? &m_vmmData.VmmReservationSpace : VaSpace,
-                                 Address,
-                                 Size,
-                                 FreeType,
-                                 &alignedAddress,
-                                 &alignedSize);
+        Address,
+        Size,
+        FreeType,
+        &alignedAddress,
+        &alignedSize);
 
-    if (IsFlagOn(FreeType, VMM_FREE_TYPE_DECOMMIT | VMM_FREE_TYPE_RELEASE ))
+    if (IsFlagOn(FreeType, VMM_FREE_TYPE_DECOMMIT | VMM_FREE_TYPE_RELEASE))
     {
-        ASSERT( NULL != alignedAddress);
-        ASSERT( 0 != alignedSize);
+        ASSERT(NULL != alignedAddress);
+        ASSERT(0 != alignedSize);
 
-        LOG_TRACE_VMM("Will free %U bytes of memory starting from VA: 0x%X\n", alignedSize, alignedAddress );
+        LOG_TRACE_VMM("Will free %U bytes of memory starting from VA: 0x%X\n", alignedSize, alignedAddress);
 
         // un-map memory
         // this must be called without the reservation lock taken
         MmuUnmapMemoryEx(alignedAddress,
-                         alignedSize,
-                         Release,
-                         PagingData);
+            alignedSize,
+            Release,
+            PagingData);
+    }
+
+    /*
+     Free these allocated FRAME_MAPPING entries in VmmFreeRegionEx(). NOTE: You will probably want to add some additional
+     information in VMM_RESERVATION_SPACE to determine the process to which the structure belongs to.
+     When freeing the FRAME_MAPPING entries, log a message containing the fields of the FRAME_MAPPING being freed.
+    */
+
+    if (VaSpace != NULL) {
+            PPROCESS pProcess = VaSpace->Process;
+            if (pProcess != NULL) {
+                INTR_STATE oldState;
+            
+                    PVOID * Context = ExAllocatePoolWithTag(
+                        PoolAllocateZeroMemory,
+                        2 * sizeof(PVOID),
+                        HEAP_TEMP_TAG,
+                        0
+                         );
+            
+                Context[0] = alignedAddress;
+                Context[1] = NULL;
+            
+                    LockAcquire(&pProcess->FrameMapLock, &oldState);
+            
+                    ForEachElementExecute(
+                        &pProcess->FrameMappingsHead,
+                        _SearchFrameInProcessList,
+                        Context,
+                        FALSE
+                         );
+            
+                    LockRelease(&pProcess->FrameMapLock, oldState);
+            
+                    if (Context[1] != NULL) {
+                    PFRAME_MAPPING FrameToRemove = (PFRAME_MAPPING)Context[1];
+                    LOG("Deleting frame with pa %x and va %x\n", FrameToRemove->PhysicalAddress, FrameToRemove->VirtualAddress);
+                    RemoveEntryList(&FrameToRemove->ListEntry);
+                
+                        ExFreePoolWithTag(FrameToRemove, HEAP_TEMP_TAG);
+                    }
+            
+                    ExFreePoolWithTag(Context, HEAP_TEMP_TAG);
+            } 
+    }
+}
+
+static
+void
+_VmmAddFrameMappings(
+    IN          PHYSICAL_ADDRESS    PhysicalAddress,
+    IN          PVOID               VirtualAddress,
+    IN          DWORD               FrameCount
+)
+{
+    PPROCESS pProcess;
+    PFRAME_MAPPING pMapping;
+    INTR_STATE intrState;
+
+    pProcess = GetCurrentProcess();
+
+    if (ProcessIsSystem(pProcess))
+    {
+        return;
+    }
+
+    for (DWORD i = 0; i < FrameCount; ++i)
+    {
+        pMapping = ExAllocatePoolWithTag(PoolAllocatePanicIfFail, sizeof(FRAME_MAPPING), HEAP_MMU_TAG, 0);
+
+        pMapping->PhysicalAddress = PtrOffset(PhysicalAddress, i * PAGE_SIZE);
+        pMapping->VirtualAddress = PtrOffset(VirtualAddress, i * PAGE_SIZE);
+        pMapping->AccessCount = 1;
+
+        LockAcquire(&pProcess->FrameMapLock, &intrState);
+        InsertTailList(&pProcess->FrameMappingsHead, &pMapping->ListEntry);
+        LockRelease(&pProcess->FrameMapLock, intrState);
+
+        LOG("Allocated entry from 0x%X -> 0x%X\n", pMapping->VirtualAddress, pMapping->PhysicalAddress);
     }
 }
 
@@ -750,6 +867,10 @@ VmmSolvePageFault(
     ASSERT(INTR_OFF == CpuIntrGetState());
     ASSERT(PagingData != NULL);
 
+    // Virtual Memory 1. Modify the page fault handler to log on each page fault the faulting address and the requested access rights.If the page fault is due to user - mode access also log the faulting process name.
+    LOG_TRACE_VMM("Page fault at address 0x%X\n", FaultingAddress);
+    LOG_TRACE_VMM("Requested rights: 0x%X\n", RightsRequested);
+
     // we will certainly not use the first virtual page of memory
     if (NULL == (PVOID) AlignAddressLower(FaultingAddress, PAGE_SIZE))
     {
@@ -761,6 +882,10 @@ VmmSolvePageFault(
     if (bKernelAddress && !PagingData->Data.KernelSpace)
     {
         LOG_TRACE_VMM("User code should not access KM pages!\n");
+
+        // Virtual Memory 1.
+        LOG_TRACE_VMM("Faulting process: %d\n", GetCurrentProcess()->Id);
+
         return FALSE;
     }
     else if (!bKernelAddress && PagingData->Data.KernelSpace)
@@ -813,6 +938,11 @@ VmmSolvePageFault(
                                  uncacheable,
                                  PagingData
                                  );
+
+            if (!PagingData->Data.KernelSpace)
+            {
+                _VmmAddFrameMappings(pa, alignedAddress, 1);
+            }   
 
             // 3. If the virtual address is backed by a file read its contents
             if (pBackingFile != NULL)
@@ -1370,4 +1500,37 @@ BOOLEAN
     }
 
     return bContinue;
+}
+
+void
+ VmmTick(
+    void
+     )
+{
+    PPROCESS pProcess = GetCurrentProcess();
+    INTR_STATE intrState;
+    
+    LockAcquire(&pProcess->FrameMapLock, &intrState);
+    for (PLIST_ENTRY pCurrentEntry = pProcess->FrameMappingsHead.Flink;
+        pCurrentEntry != &pProcess->FrameMappingsHead;
+        pCurrentEntry = pCurrentEntry->Flink)
+    {
+        BOOLEAN bAccessed;
+        BOOLEAN bDirty;
+        PHYSICAL_ADDRESS pa;
+        PML4 cr3;
+        
+        PFRAME_MAPPING pMapping = CONTAINING_RECORD(pCurrentEntry, FRAME_MAPPING, ListEntry);
+        
+        cr3.Raw = (QWORD)pProcess->PagingData->Data.BasePhysicalAddress;
+        
+        pa = VmmGetPhysicalAddressEx(cr3,
+            pMapping->VirtualAddress,
+            &bAccessed,
+            &bDirty);
+        ASSERT(pa == pMapping->PhysicalAddress);
+        
+        pMapping->AccessCount += (bAccessed || bDirty);
+    }
+     LockRelease(&pProcess->FrameMapLock, intrState);
 }

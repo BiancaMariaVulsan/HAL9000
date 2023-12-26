@@ -58,6 +58,12 @@ typedef struct _PROCESS
 
     // VaSpace used only for UM virtual memory allocations
     struct _VMM_RESERVATION_SPACE*  VaSpace;
+
+    // Virtual Memory 4. Maintain a list of physical to virtual address mappings for each process. Log this list each time a process is destroyed.
+    LOCK                            FrameMapLock;
+    
+    _Guarded_by_(FrameMapLock)
+    LIST_ENTRY                      FrameMappingsHead;
 } PROCESS, *PPROCESS;
 
 //******************************************************************************

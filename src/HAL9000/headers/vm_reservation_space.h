@@ -22,6 +22,8 @@ typedef struct _VMM_RESERVATION_SPACE
 
     RW_SPINLOCK         ReservationLock;
 
+    PPROCESS            Process;
+
     _Guarded_by_(ReservationLock)
     PBYTE               FreeBitmapAddress;
 
