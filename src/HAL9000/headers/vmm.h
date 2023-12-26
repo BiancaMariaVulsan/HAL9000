@@ -323,3 +323,13 @@ void
 VmmTick(
     void
     );
+
+void
+VmmMarkPageAsUsable(
+    PVMM_RESERVATION_SPACE Va_Space
+);
+
+void
+VmmMarkPageAsNotUsable(
+    PVMM_RESERVATION_SPACE Va_Space
+);

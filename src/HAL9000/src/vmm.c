@@ -102,6 +102,16 @@ _VmWalkPagingTables(
     IN_OPT  PVOID                       Context
     );
 
+void
+VmmMarkPageAsUsable(
+    PVMM_RESERVATION_SPACE Va_Space
+    );
+
+void
+VmmMarkPageAsNotUsable(
+    PVMM_RESERVATION_SPACE Va_Space
+    );
+
 static FUNC_PageWalkCallback            _VmMapPage;
 static FUNC_PageWalkCallback            _VmUnmapPage;
 static FUNC_PageWalkCallback            _VmRetrievePhyAccess;
@@ -713,8 +723,6 @@ STATUS
     
     if (AlignAddressLower(CurrentFrame->VirtualAddress, PAGE_SIZE) == AlignAddressLower(pVirtualAddress, PAGE_SIZE)) {
         FrameContext[1] = CurrentFrame;
-        
-        //LOG("Found frame with pa %x and va %x\n", CurrentFrame->PhysicalAddress, CurrentFrame->VirtualAddress);
             
         return STATUS_ELEMENT_FOUND;
     }
@@ -867,7 +875,8 @@ VmmSolvePageFault(
     ASSERT(INTR_OFF == CpuIntrGetState());
     ASSERT(PagingData != NULL);
 
-    // Virtual Memory 1. Modify the page fault handler to log on each page fault the faulting address and the requested access rights.If the page fault is due to user - mode access also log the faulting process name.
+    // Virtual Memory 1. Modify the page fault handler to log on each page fault the faulting address and the requested access rights.
+    // If the page fault is due to user - mode access also log the faulting process name.
     LOG_TRACE_VMM("Page fault at address 0x%X\n", FaultingAddress);
     LOG_TRACE_VMM("Requested rights: 0x%X\n", RightsRequested);
 
@@ -922,7 +931,34 @@ VmmSolvePageFault(
             PVOID alignedAddress;
 
             // solve #PF
+            // Virtual Memory 7.
+            // Modify the page fault handler such that when the faulty address is on the first page the following will happen:
+            // a. if page zero is marked as usable(i.e.SyscallMapZeroPage was called and no SyscallUnmapZeroPage was called in the meantime) the OS will allocate a physical frame, will zero it, will map the virtual page zero on the allocated physical frame, and will resume transparently the faulty instruction(and process);
+            // b. if page zero is marked as unusable(i.e.SyscallUnmapZeroPage was called and no SyscallMapZeroPage was called in the meantime) the OS will terminate the calling process.
 
+            PVMM_RESERVATION_SPACE reservationSpace = _VmmRetrieveReservationSpaceForAddress(FaultingAddress);
+            // Check if page zero from the reservations list is usable
+            PVMM_RESERVATION currentReservation = reservationSpace->ReservationList;
+            if (currentReservation != NULL)
+            {
+                // Check if the faulting address is in the first page
+                if ((FaultingAddress >= currentReservation->StartVa) &&
+                    (FaultingAddress < (PVOID)((QWORD)currentReservation->StartVa + PAGE_SIZE)))
+                {
+                    // Check if the reservation is usable
+                    if (currentReservation->Usable)
+                    {
+                        goto allocate_page;
+                    }
+                    else
+                    {
+                        // Terminate the process
+                        ProcessTerminate(GetCurrentProcess());
+                    }
+                }
+            }
+
+            allocate_page:
             // 1. Reserve one frame of physical memory
             pa = PmmReserveMemory(1);
             ASSERT(NULL != pa);
@@ -1505,7 +1541,10 @@ BOOLEAN
 // Vurtual Memory 6. 
 // On each scheduler tick, goes through the list of physical to virtual mappings (created at problem 4) 
 // for the current process and displays a message for each dirty or accessed page.
-void VmmTick(void)
+void 
+VmmTick(
+    void
+    )
 {
     PPROCESS pProcess = GetCurrentProcess();
     INTR_STATE intrState;
@@ -1553,4 +1592,26 @@ void VmmTick(void)
 
     // Release the lock on the frame mappings
     LockRelease(&pProcess->FrameMapLock, intrState);
+}
+
+void
+VmmMarkPageAsUsable(
+    PVMM_RESERVATION_SPACE Va_Space
+    )
+{
+    PVMM_RESERVATION currentReservation = Va_Space->ReservationList;
+    if (currentReservation != NULL) {
+        currentReservation->Usable = FALSE;
+    }
+}
+
+void
+VmmMarkPageAsNotUsable(
+    PVMM_RESERVATION_SPACE Va_Space
+    )
+{
+    PVMM_RESERVATION currentReservation = Va_Space->ReservationList;
+    if (currentReservation != NULL) {
+        currentReservation->Usable = FALSE;
+    }
 }

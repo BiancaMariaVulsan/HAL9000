@@ -266,10 +266,36 @@ SyscallVirtualFree(
 STATUS
 SyscallMapZeroPage(
     void
-);
+)
+{
+    PPROCESS pProcess = GetCurrentProcess();
+
+    if (pProcess == NULL) {
+		return STATUS_UNSUCCESSFUL;
+	}
+
+    // Mark the first page as usable
+    VmmMarkPageAsUsable(
+        pProcess->VaSpace
+		);
+    return STATUS_SUCCESS;
+}
 
 // the first page is no longer valid
 STATUS
 SyscallUnmapZeroPage(
     void
-);
+)
+{
+    PPROCESS pProcess = GetCurrentProcess();
+
+    if (pProcess == NULL) {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    // Mark the first page as not usable
+    VmmMarkPageAsNotUsable(
+        pProcess->VaSpace
+    );
+    return STATUS_SUCCESS;
+}
