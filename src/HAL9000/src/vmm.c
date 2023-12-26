@@ -1502,15 +1502,18 @@ BOOLEAN
     return bContinue;
 }
 
-void
- VmmTick(
-    void
-     )
+// Vurtual Memory 6. 
+// On each scheduler tick, goes through the list of physical to virtual mappings (created at problem 4) 
+// for the current process and displays a message for each dirty or accessed page.
+void VmmTick(void)
 {
     PPROCESS pProcess = GetCurrentProcess();
     INTR_STATE intrState;
-    
+
+    // Acquire a lock on the frame mappings for the current process
     LockAcquire(&pProcess->FrameMapLock, &intrState);
+
+    // Iterate through the list of frame mappings for the current process
     for (PLIST_ENTRY pCurrentEntry = pProcess->FrameMappingsHead.Flink;
         pCurrentEntry != &pProcess->FrameMappingsHead;
         pCurrentEntry = pCurrentEntry->Flink)
@@ -1519,18 +1522,35 @@ void
         BOOLEAN bDirty;
         PHYSICAL_ADDRESS pa;
         PML4 cr3;
-        
+
+        // Retrieve the frame mapping structure from the current list entry
         PFRAME_MAPPING pMapping = CONTAINING_RECORD(pCurrentEntry, FRAME_MAPPING, ListEntry);
-        
+
+        // Obtain the CR3 value from the process's paging data
         cr3.Raw = (QWORD)pProcess->PagingData->Data.BasePhysicalAddress;
-        
+
+        // Get the physical address associated with the virtual address in the frame mapping
         pa = VmmGetPhysicalAddressEx(cr3,
             pMapping->VirtualAddress,
             &bAccessed,
             &bDirty);
+
+        // Display a message for each dirty or accessed page
+        if (bAccessed || bDirty)
+        {
+            LOG("Page at Virtual Address 0x%X is %s and %s!\n",
+                pMapping->VirtualAddress,
+                bAccessed ? "accessed" : "",
+                bDirty ? "dirty" : "");
+        }
+
+        // Ensure that the obtained physical address matches the one in the frame mapping
         ASSERT(pa == pMapping->PhysicalAddress);
-        
+
+        // Update the access count for the frame mapping based on accessed or dirty status
         pMapping->AccessCount += (bAccessed || bDirty);
     }
-     LockRelease(&pProcess->FrameMapLock, intrState);
+
+    // Release the lock on the frame mappings
+    LockRelease(&pProcess->FrameMapLock, intrState);
 }

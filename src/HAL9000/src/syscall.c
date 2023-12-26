@@ -259,3 +259,17 @@ SyscallVirtualFree(
          );
     return STATUS_SUCCESS;
 }
+
+// Virtual Memory 7. Implement two new system calls SyscallIdMapZeroPage and SyscallIdUnmapZeroPage:
+
+// The first system call should mark the first page as valid, but not map it, i.e. a #PF should still be generated on NULL access.
+STATUS
+SyscallMapZeroPage(
+    void
+);
+
+// the first page is no longer valid
+STATUS
+SyscallUnmapZeroPage(
+    void
+);
