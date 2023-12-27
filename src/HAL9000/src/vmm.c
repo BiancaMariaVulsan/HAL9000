@@ -112,6 +112,23 @@ VmmMarkPageAsNotUsable(
     PVMM_RESERVATION_SPACE Va_Space
     );
 
+PVOID
+_VmmFindRandomUnmappedPage(
+    PPROCESS pProcess
+    );
+
+PFRAME_MAPPING
+_VmmFindFrameMapping(
+    PPROCESS pProcess,
+    PVOID virtualAddress
+    );
+
+void
+_UnmapPageAndSetNotMapped(
+    PFRAME_MAPPING pMapping,
+    PPAGING_LOCK_DATA PagingData
+    );
+
 static FUNC_PageWalkCallback            _VmMapPage;
 static FUNC_PageWalkCallback            _VmUnmapPage;
 static FUNC_PageWalkCallback            _VmRetrievePhyAccess;
@@ -845,6 +862,7 @@ _VmmAddFrameMappings(
         pMapping->PhysicalAddress = PtrOffset(PhysicalAddress, i * PAGE_SIZE);
         pMapping->VirtualAddress = PtrOffset(VirtualAddress, i * PAGE_SIZE);
         pMapping->AccessCount = 1;
+        pMapping->IsMapped = TRUE;
 
         LockAcquire(&pProcess->FrameMapLock, &intrState);
         InsertTailList(&pProcess->FrameMappingsHead, &pMapping->ListEntry);
@@ -931,11 +949,11 @@ VmmSolvePageFault(
             PVOID alignedAddress;
 
             // solve #PF
+            
             // Virtual Memory 7.
             // Modify the page fault handler such that when the faulty address is on the first page the following will happen:
             // a. if page zero is marked as usable(i.e.SyscallMapZeroPage was called and no SyscallUnmapZeroPage was called in the meantime) the OS will allocate a physical frame, will zero it, will map the virtual page zero on the allocated physical frame, and will resume transparently the faulty instruction(and process);
             // b. if page zero is marked as unusable(i.e.SyscallUnmapZeroPage was called and no SyscallMapZeroPage was called in the meantime) the OS will terminate the calling process.
-
             PVMM_RESERVATION_SPACE reservationSpace = _VmmRetrieveReservationSpaceForAddress(FaultingAddress);
             // Check if page zero from the reservations list is usable
             PVMM_RESERVATION currentReservation = reservationSpace->ReservationList;
@@ -945,20 +963,34 @@ VmmSolvePageFault(
                 if ((FaultingAddress >= currentReservation->StartVa) &&
                     (FaultingAddress < (PVOID)((QWORD)currentReservation->StartVa + PAGE_SIZE)))
                 {
-                    // Check if the reservation is usable
-                    if (currentReservation->Usable)
-                    {
-                        goto allocate_page;
-                    }
-                    else
-                    {
+                    if (!currentReservation->Usable) {
                         // Terminate the process
                         ProcessTerminate(GetCurrentProcess());
+                        __leave;
                     }
+                    // else allocate a frame and and do the mapping
                 }
             }
 
-            allocate_page:
+            // Virtual Memory 8.
+            PFRAME_MAPPING pFrameMapping = _VmmFindFrameMapping(GetCurrentProcess(), FaultingAddress);
+            if (pFrameMapping) {
+                if (!pFrameMapping->IsMapped) {
+                    // Map the page
+                    MmuMapMemoryInternal(
+                        pFrameMapping->PhysicalAddress, 
+                        PAGE_SIZE,
+                        pageRights,
+                        pFrameMapping->VirtualAddress,
+                        TRUE,
+                        uncacheable,
+                        PagingData
+                        );
+
+                    pFrameMapping->IsMapped = TRUE;
+                }
+			}
+
             // 1. Reserve one frame of physical memory
             pa = PmmReserveMemory(1);
             ASSERT(NULL != pa);
@@ -1019,6 +1051,19 @@ VmmSolvePageFault(
                 pCpu->PageFaults = pCpu->PageFaults + 1;
             }
             bSolvedPageFault = TRUE;
+
+
+            // Virtual Memory 8.
+            // Identify a random unmapped page
+            PVOID randomUnmappedAddress = _VmmFindRandomUnmappedPage(GetCurrentProcess());
+
+            // Unmap the random unmapped page if it exists
+            if (randomUnmappedAddress != NULL) {
+                PFRAME_MAPPING pRandomMapping = _VmmFindFrameMapping(GetCurrentProcess(), randomUnmappedAddress);
+                if (pRandomMapping != NULL && pRandomMapping->IsMapped) {
+                    _UnmapPageAndSetNotMapped(pRandomMapping, PagingData);
+                }
+            }
         }
     }
     __finally
@@ -1594,6 +1639,7 @@ VmmTick(
     LockRelease(&pProcess->FrameMapLock, intrState);
 }
 
+// Virtual Memory 7.
 void
 VmmMarkPageAsUsable(
     PVMM_RESERVATION_SPACE Va_Space
@@ -1605,6 +1651,7 @@ VmmMarkPageAsUsable(
     }
 }
 
+// Virtual Memory 7.
 void
 VmmMarkPageAsNotUsable(
     PVMM_RESERVATION_SPACE Va_Space
@@ -1614,4 +1661,81 @@ VmmMarkPageAsNotUsable(
     if (currentReservation != NULL) {
         currentReservation->Usable = FALSE;
     }
+}
+
+// Virtual Memory 8.
+// Function to find a random mapped page
+PVOID 
+_VmmFindRandomUnmappedPage(
+    PPROCESS pProcess
+    ) 
+{
+    INTR_STATE oldState;
+    LockAcquire(&pProcess->FrameMapLock, &oldState);
+
+    PVOID randomUnmappedAddress = NULL;
+
+    // Iterate through the FrameMappingsHead to find a random unmapped page
+    PLIST_ENTRY pEntry = pProcess->FrameMappingsHead.Flink;
+    while (pEntry != &pProcess->FrameMappingsHead) {
+        PFRAME_MAPPING pMapping = CONTAINING_RECORD(pEntry, FRAME_MAPPING, ListEntry);
+
+        // Check if the page is mapped
+        if (pMapping->IsMapped) {
+            randomUnmappedAddress = pMapping->VirtualAddress;
+            break;
+        }
+
+        pEntry = pEntry->Flink;
+    }
+
+    LockRelease(&pProcess->FrameMapLock, oldState);
+
+    return randomUnmappedAddress;
+}
+
+// Virtual Memory 8.
+// Function to find a frame mapping based on the virtual address
+PFRAME_MAPPING 
+_VmmFindFrameMapping(
+    PPROCESS pProcess, 
+    PVOID virtualAddress
+    ) 
+{
+    INTR_STATE oldState;
+    LockAcquire(&pProcess->FrameMapLock, &oldState);
+
+    PFRAME_MAPPING pMapping = NULL;
+
+    // Iterate through the FrameMappingsHead to find the mapping for the given virtual address
+    PLIST_ENTRY pEntry = pProcess->FrameMappingsHead.Flink;
+    while (pEntry != &pProcess->FrameMappingsHead) {
+        PFRAME_MAPPING pCurMapping = CONTAINING_RECORD(pEntry, FRAME_MAPPING, ListEntry);
+
+        // Check if the virtual addresses match
+        if (pCurMapping->VirtualAddress == virtualAddress) {
+            pMapping = pCurMapping;
+            break;
+        }
+
+        pEntry = pEntry->Flink;
+    }
+
+    LockRelease(&pProcess->FrameMapLock, oldState);
+
+    return pMapping;
+}
+
+// Virtual Memory 8.
+// Function to unmap a page and set IsMapped to FALSE
+void 
+_UnmapPageAndSetNotMapped(
+    PFRAME_MAPPING pMapping, 
+    PPAGING_LOCK_DATA PagingData
+    ) 
+{
+    // Unmap the page
+    MmuUnmapMemoryEx(pMapping->VirtualAddress, PAGE_SIZE, TRUE, PagingData);
+    // Set IsMapped to FALSE
+    pMapping->IsMapped = FALSE;
 }

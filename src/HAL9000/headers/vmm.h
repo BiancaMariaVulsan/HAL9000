@@ -17,6 +17,9 @@ typedef struct _FRAME_MAPPING
 
     QWORD               AccessCount;
 
+    // Virtual Memory 8.
+    BOOLEAN             IsMapped;
+
     LIST_ENTRY          ListEntry;
 } FRAME_MAPPING, * PFRAME_MAPPING;
 
