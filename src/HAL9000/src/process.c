@@ -376,6 +376,14 @@ ProcessTerminate(
     ASSERT(Process != NULL);
     ASSERT(!ProcessIsSystem(Process));
 
+    // Userprog 5.
+    PPROCESS systemProcess = m_processData.SystemProcess;
+    ASSERT(systemProcess != NULL);
+    // Move the children of the process we are about to terminate to the system process
+    LockAcquire(&systemProcess->ProcessChildrenLock, &oldState);
+    systemProcess->ProcessChildrenHead = Process->ProcessChildrenHead;
+    LockRelease(&systemProcess->ProcessChildrenLock, oldState);
+
     pCurrentThread = GetCurrentThread();
     bFoundCurThreadInProcess = FALSE;
 
@@ -529,6 +537,10 @@ _ProcessInit(
 
         InitializeListHead(&pProcess->FrameMappingsHead);
         LockInit(&pProcess->FrameMapLock);
+
+        // Userprog 5.
+        InitializeListHead(&pProcess->ProcessChildrenHead);
+        LockInit(&pProcess->ProcessChildrenLock);
 
         LOG_TRACE_PROCESS("Process with PID 0x%X created\n", pProcess->Id);
     }

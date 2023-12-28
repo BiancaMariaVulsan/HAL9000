@@ -91,6 +91,32 @@ SyscallHandler(
                 (VMM_FREE_TYPE)pSyscallParameters[2]
                  );
             break;
+        case SyscallIdFileWrite:
+            status = SyscallFileWrite(
+                (UM_HANDLE)pSyscallParameters[0],
+                (PVOID)pSyscallParameters[1],
+                (QWORD)pSyscallParameters[2],
+                (QWORD*)pSyscallParameters[3]
+                 );
+            break;
+        case SyscallIdProcessExit:
+            status = SyscallProcessExit((STATUS)pSyscallParameters[0]);
+            break;
+        case SyscallIdThreadExit:
+            status = SyscallThreadExit((STATUS)pSyscallParameters[0]);
+            break;
+        case SyscallIdMemset:
+            status = SyscallMemset(
+                (PBYTE)pSyscallParameters[0],
+                (DWORD)pSyscallParameters[1],
+                (BYTE)pSyscallParameters[2]
+				 );
+            break;
+        case SyscallIdProcessCreate:
+            status = SyscallProcessCreate((char*)pSyscallParameters[0],
+                (QWORD)pSyscallParameters[1], (char*)pSyscallParameters[2],
+                (QWORD)pSyscallParameters[3], (UM_HANDLE*)pSyscallParameters[4]);
+            break;
         default:
             LOG_ERROR("Unimplemented syscall called from User-space!\n");
             status = STATUS_UNSUPPORTED;
@@ -174,6 +200,7 @@ SyscallCpuInit(
     LOG_TRACE_USERMODE("Successfully set STAR to 0x%X\n", starMsr.Raw);
 }
 
+// Userprog ex 1.
 // SyscallIdIdentifyVersion
 STATUS
 SyscallValidateInterface(
@@ -193,6 +220,7 @@ SyscallValidateInterface(
 }
 
 // STUDENT TODO: implement the rest of the syscalls
+// Userprog 1.
 STATUS
 SyscallThreadExit(
     IN  STATUS                      ExitStatus
@@ -200,6 +228,137 @@ SyscallThreadExit(
 {
     LOG_TRACE_USERMODE("Will exit thread with status 0x%x\n", ExitStatus);
     ThreadExit(ExitStatus);
+    return STATUS_SUCCESS;
+}
+
+// Userprog 1.
+STATUS
+SyscallProcessExit(
+    IN  STATUS                      ExitStatus
+)
+{
+    LOG_TRACE_USERMODE("Will exit process with status 0x%x\n", ExitStatus);
+    PPROCESS crtProcess = GetCurrentProcess();
+    if (crtProcess == NULL) {
+        return STATUS_UNSUCCESSFUL;
+	}
+    ProcessTerminate(crtProcess);
+    return STATUS_SUCCESS;
+}
+
+// Userprog 2.
+STATUS
+SyscallFileWrite(
+    IN  UM_HANDLE                   FileHandle,
+    IN_READS_BYTES(BytesToWrite)
+    PVOID                           Buffer,
+    IN  QWORD                       BytesToWrite,
+    OUT QWORD* BytesWritten
+)
+{
+    if (BytesWritten == NULL) {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    if (FileHandle == UM_FILE_HANDLE_STDOUT) {
+        *BytesWritten = BytesToWrite;
+        LOG("[%s]:[%s]\n", ProcessGetName(NULL), Buffer);
+        return STATUS_SUCCESS;
+    }
+
+    *BytesWritten = BytesToWrite;
+    return STATUS_SUCCESS;
+}
+
+// Userprog 4.
+STATUS
+SyscallMemset(
+    OUT_WRITES(BytesToWrite)    PBYTE   Address,
+    IN                          DWORD   BytesToWrite,
+    IN                          BYTE    ValueToWrite
+)
+{
+    STATUS status = MmuIsBufferValid(Address, sizeof(Address), PAGE_RIGHTS_WRITE, GetCurrentProcess());
+    if (!SUCCEEDED(status))
+    {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+	memset(Address, ValueToWrite, BytesToWrite);
+	return STATUS_SUCCESS;
+}
+
+// Userprog 5.
+STATUS
+SyscallProcessCreate(
+    IN_READS_Z(PathLength)
+    char*                           ProcessPath,
+    IN          QWORD               PathLength,
+    IN_READS_OPT_Z(ArgLength)
+    char*                           Arguments,
+    IN          QWORD               ArgLength,
+    OUT         UM_HANDLE*          ProcessHandle
+)
+{
+    PPROCESS pProcess;
+    STATUS status;
+    INTR_STATE oldState;
+
+    status = MmuIsBufferValid((const PVOID)ProcessPath, PathLength, PAGE_RIGHTS_READ, GetCurrentProcess());
+    if (!SUCCEEDED(status))
+    {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+    if (PathLength <= 0) {
+        return STATUS_INVALID_PARAMETER2;
+    }
+
+    if (Arguments != NULL) {
+        status = MmuIsBufferValid((const PVOID)Arguments, ArgLength, PAGE_RIGHTS_READ, GetCurrentProcess());
+        if (!SUCCEEDED(status))
+        {
+            return STATUS_INVALID_PARAMETER3;
+        }
+        if (ArgLength < 0) {
+            return STATUS_INVALID_PARAMETER3;
+        }
+    }
+
+    status = MmuIsBufferValid(ProcessHandle, sizeof(UM_HANDLE), PAGE_RIGHTS_WRITE, GetCurrentProcess());
+    if (!SUCCEEDED(status))
+    {
+        return STATUS_INVALID_PARAMETER4;
+    }
+
+    char resultPath[MAX_PATH];
+
+    if (strncmp(IomuGetSystemPartitionPath(), ProcessPath, 3) != 0) {
+        snprintf(resultPath, MAX_PATH, "%sApplications\\%s", IomuGetSystemPartitionPath(), ProcessPath);
+    }
+    else {
+        snprintf(resultPath, MAX_PATH, "%s", ProcessPath);
+    }
+
+    // ProcessCreate is used to create a child (pProcess) of the currently running process
+    status = ProcessCreate(
+        resultPath,
+        Arguments,
+        &pProcess
+    );
+    if (!SUCCEEDED(status)) {
+        *ProcessHandle = UM_INVALID_HANDLE_VALUE;
+        return status;
+    }
+
+    // Use the PID as handle
+    *ProcessHandle = pProcess->Id;
+
+    // Add the child to the list of children of the current process
+    LockAcquire(&pProcess->ProcessChildrenLock, &oldState);
+    InsertTailList(&GetCurrentProcess()->ProcessChildrenHead, &pProcess->ProcessChildrenElem);
+    LockRelease(&pProcess->ProcessChildrenLock, oldState);
+
     return STATUS_SUCCESS;
 }
 

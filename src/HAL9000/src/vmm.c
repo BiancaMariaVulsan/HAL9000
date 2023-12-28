@@ -700,6 +700,10 @@ VmmAllocRegionEx(
                                              &pAlignedAddress,
                                              &alignedSize
                                              );
+
+                LOG("Allocating for VaSpace at 0x%X, a memory region from 0x%X of size 0x%X\n",
+                    pVaSpace, pBaseAddress, alignedSize);
+
                 ASSERT(pAlignedAddress == pBaseAddress);
                 pBaseAddress = NULL;
 

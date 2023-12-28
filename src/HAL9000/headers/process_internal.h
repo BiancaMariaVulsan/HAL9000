@@ -64,6 +64,14 @@ typedef struct _PROCESS
     
     _Guarded_by_(FrameMapLock)
     LIST_ENTRY                      FrameMappingsHead;
+
+    // Userprog 5.
+    LOCK                            ProcessChildrenLock;
+
+    _Guarded_by_(FrameMapLock)
+    LIST_ENTRY                      ProcessChildrenHead;
+
+    LIST_ENTRY                      ProcessChildrenElem;
 } PROCESS, *PPROCESS;
 
 //******************************************************************************
