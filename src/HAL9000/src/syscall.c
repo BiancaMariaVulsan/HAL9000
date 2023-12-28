@@ -26,11 +26,11 @@ static BOOLEAN syscallsDisabled = TRUE;
 typedef struct {
     char VariableName[MAX_NAME_SIZE];
     QWORD Value;
+    LIST_ENTRY ListEntry;
 } GLOBAL_VARIABLE;
-// Define a maximum number of global variables
-#define MAX_GLOBAL_VARIABLES 100
 // Array to store global variables
-GLOBAL_VARIABLE globalVariables[MAX_GLOBAL_VARIABLES];
+LIST_ENTRY globalVariablesHead;
+LOCK globalVariablesLock;
 
 // Userprog 8.
 LIST_ENTRY gMutexHead;
@@ -41,6 +41,9 @@ SyscallPreinitSystem(
     void
     )
 {
+    LockInit(&globalVariablesLock);
+    InitializeListHead(&globalVariablesHead);
+
     LockInit(&gMutexLock);
     InitializeListHead(&gMutexHead);
 }
@@ -437,34 +440,35 @@ SyscallSetGlobalVariable(
     IN                              QWORD   Value
     )
 {
-    // Check for valid parameters
-    if (VarLength >= sizeof(globalVariables[0].VariableName) || VarLength == 0) {
-        return STATUS_INVALID_PARAMETER2;
-    }
+    INTR_STATE oldState;
 
     // Search for the variable in the array
-    for (int i = 0; i < MAX_GLOBAL_VARIABLES; ++i) {
-        if (strncmp(globalVariables[i].VariableName, VariableName, VarLength) == 0) {
-            // Variable found, update its value
-            globalVariables[i].Value = Value;
+    LIST_ENTRY *crtEntry = globalVariablesHead.Flink;
+    while (crtEntry != &globalVariablesHead) {
+		GLOBAL_VARIABLE *crtVariable = CONTAINING_RECORD(crtEntry, GLOBAL_VARIABLE, ListEntry);
+		if (strncmp(crtVariable->VariableName, VariableName, VarLength) == 0) {
+			// Variable found, update its value
+			crtVariable->Value = Value;
 
-            return STATUS_SUCCESS;
-        }
-    }
+			return STATUS_SUCCESS;
+		}
+		crtEntry = crtEntry->Flink;
+	}
 
     // Variable not found, add it to the array
-    for (int i = 0; i < MAX_GLOBAL_VARIABLES; ++i) {
-        if (globalVariables[i].VariableName[0] == '\0') {
-            // Found an empty slot, add the variable
-            strncpy(globalVariables[i].VariableName, VariableName, VarLength);
-            globalVariables[i].Value = Value;
+    GLOBAL_VARIABLE *newVariable = ExAllocatePoolWithTag(PoolAllocateZeroMemory, sizeof(GLOBAL_VARIABLE), HEAP_TEMP_TAG, 0);
+	if (newVariable == NULL) {
+		return STATUS_INSUFFICIENT_MEMORY;
+	}
 
-            return STATUS_SUCCESS;
-        }
-    }
+    strncpy(newVariable->VariableName, VariableName, VarLength);
+	newVariable->Value = Value;
 
-    // No empty slot found
-    return STATUS_NO_MORE_OBJECTS;
+    LockAcquire(&globalVariablesLock, &oldState);
+    InsertTailList(&globalVariablesHead, &newVariable->ListEntry);
+    LockRelease(&globalVariablesLock, oldState);
+
+    return STATUS_SUCCESS;
 }
 
 // Userprog 7.
@@ -475,19 +479,17 @@ SyscallGetGlobalVariable(
     OUT                             PQWORD  Value
     )
 {
-    // Check for valid parameters
-    if (VarLength >= sizeof(globalVariables[0].VariableName) || VarLength == 0 || Value == NULL) {
-        return STATUS_INVALID_PARAMETER3;
-    }
-
     // Search for the variable in the array
-    for (int i = 0; i < MAX_GLOBAL_VARIABLES; ++i) {
-        if (strncmp(globalVariables[i].VariableName, VariableName, VarLength) == 0) {
+    LIST_ENTRY *crtEntry = globalVariablesHead.Flink;
+    while (crtEntry != &globalVariablesHead) {
+        GLOBAL_VARIABLE *crtVariable = CONTAINING_RECORD(crtEntry, GLOBAL_VARIABLE, ListEntry);
+        if (strncmp(crtVariable->VariableName, VariableName, VarLength) == 0) {
             // Variable found, return its value
-            *Value = globalVariables[i].Value;
+            *Value = crtVariable->Value;
 
             return STATUS_SUCCESS;
         }
+        crtEntry = crtEntry->Flink;
     }
 
     // Variable not found
