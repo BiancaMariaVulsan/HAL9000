@@ -13,6 +13,9 @@ typedef struct _MUTEX
     _Guarded_by_(MutexLock)
     LIST_ENTRY          WaitingList;
     struct _THREAD*     Holder;
+
+    // Userprog 8.
+    LIST_ENTRY          MutexListEntry;
 } MUTEX, *PMUTEX;
 
 //******************************************************************************

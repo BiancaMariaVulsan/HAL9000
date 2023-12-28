@@ -12,6 +12,7 @@
 #include "io.h"
 #include "iomu.h"
 #include "vmm.h"
+#include "mutex.h"
 
 extern void SyscallEntry();
 
@@ -30,6 +31,19 @@ typedef struct {
 #define MAX_GLOBAL_VARIABLES 100
 // Array to store global variables
 GLOBAL_VARIABLE globalVariables[MAX_GLOBAL_VARIABLES];
+
+// Userprog 8.
+LIST_ENTRY gMutexHead;
+LOCK gMutexLock;
+
+void 
+SyscallPreinitSystem(
+    void
+    )
+{
+    LockInit(&gMutexLock);
+    InitializeListHead(&gMutexHead);
+}
 
 void
 SyscallHandler(
@@ -143,6 +157,18 @@ SyscallHandler(
                 status = SyscallGetGlobalVariable((char*)pSyscallParameters[0],
                     (DWORD)pSyscallParameters[1], (PQWORD)pSyscallParameters[2]);
                 break;
+            case SyscallIdMutexInit:
+				status = SyscallMutexInit((UM_HANDLE*)pSyscallParameters[0]);
+				break;
+            case SyscallIdMutexAcquire:
+                status = SyscallMutexAcquire((UM_HANDLE)pSyscallParameters[0]);
+				break;
+            case SyscallIdMutexRelease:
+				status = SyscallMutexRelease((UM_HANDLE)pSyscallParameters[0]);
+                break;
+            case SyscallIdMutexDestroy:
+				status = SyscallMutexDestroy((UM_HANDLE)pSyscallParameters[0]);
+				break;
             default:
                 LOG_ERROR("Unimplemented syscall called from User-space!\n");
                 status = STATUS_UNSUPPORTED;
@@ -171,14 +197,6 @@ SyscallHandler(
 
         CpuIntrSetState(INTR_OFF);
     }
-}
-
-void
-SyscallPreinitSystem(
-    void
-    )
-{
-
 }
 
 STATUS
@@ -474,6 +492,98 @@ SyscallGetGlobalVariable(
 
     // Variable not found
     return STATUS_UNSUCCESSFUL;
+}
+
+// Userprog 8.
+STATUS
+SyscallMutexInit(
+    OUT         UM_HANDLE* Mutex
+)
+{
+    INTR_STATE oldState;
+    if (Mutex == NULL) {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+    PMUTEX mutex = NULL;
+    MutexInit(mutex, FALSE);
+    // Set the UM_HANDLE to the mutex pointer
+    *Mutex = (UM_HANDLE)mutex;
+
+    // Acquire the global lock to protect access to the list
+    LockAcquire(&gMutexLock, &oldState);
+    InsertTailList(&gMutexHead, &mutex->MutexListEntry);
+    // Release the global lock
+    LockRelease(&gMutexLock, oldState);
+
+    return STATUS_SUCCESS;
+}
+
+// Userprog 8.
+STATUS
+SyscallMutexAcquire(
+    IN       UM_HANDLE          Mutex
+)
+{
+    if (Mutex == UM_INVALID_HANDLE_VALUE) {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+    // Acquire the kernel-level mutex
+    PMUTEX kernelMutex = (PMUTEX)Mutex;
+    MutexAcquire(kernelMutex);
+
+    return STATUS_SUCCESS;
+}
+
+// Userprog 8.
+STATUS
+SyscallMutexRelease(
+    IN       UM_HANDLE          Mutex
+)
+{
+    if (Mutex == UM_INVALID_HANDLE_VALUE) {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+    // Release the kernel-level mutex
+    PMUTEX kernelMutex = (PMUTEX)Mutex;
+    MutexRelease(kernelMutex);
+
+    return STATUS_SUCCESS;
+}
+
+// Userprog 8.
+STATUS 
+SyscallMutexDestroy(
+    IN UM_HANDLE Mutex
+    )
+{
+    if (Mutex == UM_INVALID_HANDLE_VALUE) {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+    // Acquire the global lock to protect access to the list
+    INTR_STATE oldState;
+    LockAcquire(&gMutexLock, &oldState);
+
+    // Remove the mutex entry from the list
+    PMUTEX kernelMutex = (PMUTEX)Mutex;
+    // Search for the mutex entry in the list
+    PLIST_ENTRY crtEntry = gMutexHead.Flink;
+    while (crtEntry != &gMutexHead) {
+		if (crtEntry == &kernelMutex->MutexListEntry) {
+			// Found the mutex entry, remove it from the list
+			RemoveEntryList(crtEntry);
+			break;
+		}
+		crtEntry = crtEntry->Flink;
+	}
+
+    // Release the global lock
+    LockRelease(&gMutexLock, oldState);
+
+    return STATUS_SUCCESS;
 }
 
 // Virtual Memory 3. Implement the basic SyscallIdVirtualAlloc system call ignoring the Key parameter.
