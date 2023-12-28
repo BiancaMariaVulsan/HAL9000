@@ -17,6 +17,9 @@ extern void SyscallEntry();
 
 #define SYSCALL_IF_VERSION_KM       SYSCALL_IMPLEMENTED_IF_VERSION
 
+// Userprog 6.
+static BOOLEAN syscallsDisabled = TRUE;
+
 void
 SyscallHandler(
     INOUT   COMPLETE_PROCESSOR_STATE    *CompleteProcessorState
@@ -66,61 +69,78 @@ SyscallHandler(
         // The first parameter is the system call ID, we don't care about it => +1
         pSyscallParameters = (PQWORD)usermodeProcessorState->RegisterValues[RegisterRbp] + 1;
 
-        // Dispatch syscalls
-        switch (sysCallId)
-        {
-        case SyscallIdIdentifyVersion:
-            status = SyscallValidateInterface((SYSCALL_IF_VERSION)*pSyscallParameters);
-            break;
-        // STUDENT TODO: implement the rest of the syscalls
-        case SyscallIdVirtualAlloc:
-            status = SyscallVirtualAlloc(
-                (PVOID)pSyscallParameters[0],
-                (QWORD)pSyscallParameters[1],
-                (VMM_ALLOC_TYPE)pSyscallParameters[2],
-                (PAGE_RIGHTS)pSyscallParameters[3],
-                (UM_HANDLE)pSyscallParameters[4],
-                (QWORD)pSyscallParameters[5],
-                (PVOID*)pSyscallParameters[6]
-                 );
-            break;
-        case SyscallIdVirtualFree:
-            status = SyscallVirtualFree(
-                (PVOID)pSyscallParameters[0],
-                (QWORD)pSyscallParameters[1],
-                (VMM_FREE_TYPE)pSyscallParameters[2]
-                 );
-            break;
-        case SyscallIdFileWrite:
-            status = SyscallFileWrite(
-                (UM_HANDLE)pSyscallParameters[0],
-                (PVOID)pSyscallParameters[1],
-                (QWORD)pSyscallParameters[2],
-                (QWORD*)pSyscallParameters[3]
-                 );
-            break;
-        case SyscallIdProcessExit:
-            status = SyscallProcessExit((STATUS)pSyscallParameters[0]);
-            break;
-        case SyscallIdThreadExit:
-            status = SyscallThreadExit((STATUS)pSyscallParameters[0]);
-            break;
-        case SyscallIdMemset:
-            status = SyscallMemset(
-                (PBYTE)pSyscallParameters[0],
-                (DWORD)pSyscallParameters[1],
-                (BYTE)pSyscallParameters[2]
-				 );
-            break;
-        case SyscallIdProcessCreate:
-            status = SyscallProcessCreate((char*)pSyscallParameters[0],
-                (QWORD)pSyscallParameters[1], (char*)pSyscallParameters[2],
-                (QWORD)pSyscallParameters[3], (UM_HANDLE*)pSyscallParameters[4]);
-            break;
-        default:
-            LOG_ERROR("Unimplemented syscall called from User-space!\n");
-            status = STATUS_UNSUPPORTED;
-            break;
+        if (syscallsDisabled) {
+            // Dispatch syscalls
+            switch (sysCallId)
+            {
+            case SyscallIdIdentifyVersion:
+                status = SyscallValidateInterface((SYSCALL_IF_VERSION)*pSyscallParameters);
+                break;
+                // STUDENT TODO: implement the rest of the syscalls
+            case SyscallIdVirtualAlloc:
+                status = SyscallVirtualAlloc(
+                    (PVOID)pSyscallParameters[0],
+                    (QWORD)pSyscallParameters[1],
+                    (VMM_ALLOC_TYPE)pSyscallParameters[2],
+                    (PAGE_RIGHTS)pSyscallParameters[3],
+                    (UM_HANDLE)pSyscallParameters[4],
+                    (QWORD)pSyscallParameters[5],
+                    (PVOID*)pSyscallParameters[6]
+                );
+                break;
+            case SyscallIdVirtualFree:
+                status = SyscallVirtualFree(
+                    (PVOID)pSyscallParameters[0],
+                    (QWORD)pSyscallParameters[1],
+                    (VMM_FREE_TYPE)pSyscallParameters[2]
+                );
+                break;
+            case SyscallIdFileWrite:
+                status = SyscallFileWrite(
+                    (UM_HANDLE)pSyscallParameters[0],
+                    (PVOID)pSyscallParameters[1],
+                    (QWORD)pSyscallParameters[2],
+                    (QWORD*)pSyscallParameters[3]
+                );
+                break;
+            case SyscallIdProcessExit:
+                status = SyscallProcessExit((STATUS)pSyscallParameters[0]);
+                break;
+            case SyscallIdThreadExit:
+                status = SyscallThreadExit((STATUS)pSyscallParameters[0]);
+                break;
+            case SyscallIdMemset:
+                status = SyscallMemset(
+                    (PBYTE)pSyscallParameters[0],
+                    (DWORD)pSyscallParameters[1],
+                    (BYTE)pSyscallParameters[2]
+                );
+                break;
+            case SyscallIdProcessCreate:
+                status = SyscallProcessCreate((char*)pSyscallParameters[0],
+                    (QWORD)pSyscallParameters[1], (char*)pSyscallParameters[2],
+                    (QWORD)pSyscallParameters[3], (UM_HANDLE*)pSyscallParameters[4]);
+                break;
+            case SyscallIdDisableSyscalls:
+                status = SyscallDisableSyscalls((BOOLEAN)pSyscallParameters[0]);
+                break;
+            default:
+                LOG_ERROR("Unimplemented syscall called from User-space!\n");
+                status = STATUS_UNSUPPORTED;
+                break;
+            }
+		}
+		else {
+            switch (sysCallId)
+            {
+            case SyscallIdDisableSyscalls:
+                status = SyscallDisableSyscalls((BOOLEAN)pSyscallParameters[0]);
+                break;
+            default:
+                LOG_ERROR("Unimplemented syscall called from User-space!\n");
+                status = STATUS_UNSUPPORTED;
+                break;
+            }
         }
 
     }
@@ -362,6 +382,15 @@ SyscallProcessCreate(
     return STATUS_SUCCESS;
 }
 
+// Userprog 6.
+STATUS
+SyscallDisableSyscalls(
+    IN      BOOLEAN     Disable
+    )
+{
+    syscallsDisabled = Disable;
+    return STATUS_SUCCESS;
+}
 
 // Virtual Memory 3. Implement the basic SyscallIdVirtualAlloc system call ignoring the Key parameter.
 STATUS
