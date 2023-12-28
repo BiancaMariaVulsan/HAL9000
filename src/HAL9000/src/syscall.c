@@ -20,6 +20,17 @@ extern void SyscallEntry();
 // Userprog 6.
 static BOOLEAN syscallsDisabled = TRUE;
 
+// Userprog 7.
+#define MAX_NAME_SIZE 256
+typedef struct {
+    char VariableName[MAX_NAME_SIZE];
+    QWORD Value;
+} GLOBAL_VARIABLE;
+// Define a maximum number of global variables
+#define MAX_GLOBAL_VARIABLES 100
+// Array to store global variables
+GLOBAL_VARIABLE globalVariables[MAX_GLOBAL_VARIABLES];
+
 void
 SyscallHandler(
     INOUT   COMPLETE_PROCESSOR_STATE    *CompleteProcessorState
@@ -123,6 +134,14 @@ SyscallHandler(
                 break;
             case SyscallIdDisableSyscalls:
                 status = SyscallDisableSyscalls((BOOLEAN)pSyscallParameters[0]);
+                break;
+            case SyscallIdSetGlobalVariable:
+				status = SyscallSetGlobalVariable((char*)pSyscallParameters[0],
+					(DWORD)pSyscallParameters[1], (QWORD)pSyscallParameters[2]);
+				break;
+            case SyscallIdGetGlobalVariable:
+                status = SyscallGetGlobalVariable((char*)pSyscallParameters[0],
+                    (DWORD)pSyscallParameters[1], (PQWORD)pSyscallParameters[2]);
                 break;
             default:
                 LOG_ERROR("Unimplemented syscall called from User-space!\n");
@@ -390,6 +409,71 @@ SyscallDisableSyscalls(
 {
     syscallsDisabled = Disable;
     return STATUS_SUCCESS;
+}
+
+// Userprog 7.
+STATUS
+SyscallSetGlobalVariable(
+    IN_READS_Z(VarLength)           char*   VariableName,
+    IN                              DWORD   VarLength,
+    IN                              QWORD   Value
+    )
+{
+    // Check for valid parameters
+    if (VarLength >= sizeof(globalVariables[0].VariableName) || VarLength == 0) {
+        return STATUS_INVALID_PARAMETER2;
+    }
+
+    // Search for the variable in the array
+    for (int i = 0; i < MAX_GLOBAL_VARIABLES; ++i) {
+        if (strncmp(globalVariables[i].VariableName, VariableName, VarLength) == 0) {
+            // Variable found, update its value
+            globalVariables[i].Value = Value;
+
+            return STATUS_SUCCESS;
+        }
+    }
+
+    // Variable not found, add it to the array
+    for (int i = 0; i < MAX_GLOBAL_VARIABLES; ++i) {
+        if (globalVariables[i].VariableName[0] == '\0') {
+            // Found an empty slot, add the variable
+            strncpy(globalVariables[i].VariableName, VariableName, VarLength);
+            globalVariables[i].Value = Value;
+
+            return STATUS_SUCCESS;
+        }
+    }
+
+    // No empty slot found
+    return STATUS_NO_MORE_OBJECTS;
+}
+
+// Userprog 7.
+STATUS
+SyscallGetGlobalVariable(
+    IN_READS_Z(VarLength)           char*   VariableName,
+    IN                              DWORD   VarLength,
+    OUT                             PQWORD  Value
+    )
+{
+    // Check for valid parameters
+    if (VarLength >= sizeof(globalVariables[0].VariableName) || VarLength == 0 || Value == NULL) {
+        return STATUS_INVALID_PARAMETER3;
+    }
+
+    // Search for the variable in the array
+    for (int i = 0; i < MAX_GLOBAL_VARIABLES; ++i) {
+        if (strncmp(globalVariables[i].VariableName, VariableName, VarLength) == 0) {
+            // Variable found, return its value
+            *Value = globalVariables[i].Value;
+
+            return STATUS_SUCCESS;
+        }
+    }
+
+    // Variable not found
+    return STATUS_UNSUCCESSFUL;
 }
 
 // Virtual Memory 3. Implement the basic SyscallIdVirtualAlloc system call ignoring the Key parameter.
