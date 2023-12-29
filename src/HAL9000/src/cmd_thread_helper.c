@@ -137,6 +137,8 @@ void
     LOG("%10s", "Prt ticks|");
     LOG("%10s", "Ttl ticks|");
     LOG("%10s", "Process|");
+    // Threads 3. Print the clildren of a thread
+    LOG("%10s", "Children|");
     LOG("\n");
 
     status = ThreadExecuteForEachThreadEntry(_CmdThreadPrint, NULL );
@@ -693,6 +695,15 @@ STATUS
     LOG("%9U%c", pThread->TickCountEarly, '|');
     LOG("%9U%c", pThread->TickCountCompleted + pThread->TickCountEarly, '|');
     LOG("%9x%c", pThread->Process->Id, '|');
+    // Threads 3. Print the clildren of a thread
+    for (LIST_ENTRY *pChild = pThread->ChildrenListHead.Flink;
+		 pChild != &pThread->ChildrenListHead;
+		 pChild = pChild->Flink)
+	{
+		PTHREAD pChildThread = CONTAINING_RECORD(pChild, THREAD, ChildrenListElem);
+
+		LOG("%9x%c", pChildThread->Id, '|');
+	}
     LOG("\n");
 
     return STATUS_SUCCESS;

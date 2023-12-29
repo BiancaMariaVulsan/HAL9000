@@ -10,7 +10,8 @@
 #include "gdtmu.h"
 #include "pe_exports.h"
 
-#define TID_INCREMENT               4
+// Threads 1.
+#define TID_INCREMENT               -1
 
 #define THREAD_TIME_SLICE           1
 
@@ -47,7 +48,8 @@ _ThreadSystemGetNextTid(
     void
     )
 {
-    static volatile TID __currentTid = 0;
+    // Threads 1.
+    static volatile TID __currentTid = MAX_QWORD;
 
     return _InterlockedExchangeAdd64(&__currentTid, TID_INCREMENT);
 }
@@ -332,6 +334,13 @@ ThreadCreateEx(
         return status;
     }
 
+    // Threads 3.
+    PTHREAD crtThread = GetCurrentThread();
+    INTR_STATE oldState;
+    LockAcquire(&crtThread->ChildrenListLock, &oldState);
+    InsertTailList(&crtThread->ChildrenListHead, &pThread->ChildrenListElem);
+    LockRelease(&crtThread->ChildrenListLock, oldState);
+
     ProcessInsertThreadInList(Process, pThread);
 
     // the reference must be done outside _ThreadInit
@@ -415,6 +424,9 @@ ThreadCreateEx(
 
     *Thread = pThread;
 
+    // Threads 1.
+    LOG_TRACE_THREAD("Thread [tid = 0x%X] is being created\n", pThread->Id);
+
     return status;
 }
 
@@ -489,6 +501,9 @@ ThreadYield(
     ASSERT( !LockIsOwner(&m_threadSystemData.ReadyThreadsLock));
     LOG_TRACE_THREAD("Returned from _ThreadSchedule\n");
 
+    // Threads 2.
+    pThread->TimesYielded++;
+
     CpuIntrSetState(oldState);
 }
 
@@ -550,6 +565,9 @@ ThreadExit(
     LOG_FUNC_START_THREAD;
 
     pThread = GetCurrentThread();
+
+    // Threads 2.
+    LOG_TRACE_THREAD("Thread [tid = 0x%X] yielded %u times\n", pThread->Id, pThread->TimesYielded);
 
     CpuIntrDisable();
 
@@ -799,6 +817,13 @@ _ThreadInit(
         LockAcquire(&m_threadSystemData.AllThreadsLock, &oldIntrState);
         InsertTailList(&m_threadSystemData.AllThreadsList, &pThread->AllList);
         LockRelease(&m_threadSystemData.AllThreadsLock, oldIntrState);
+
+        // Threads 2.
+        pThread->TimesYielded = 0;
+
+        // Threads 3.
+        LockInit(&pThread->ChildrenListLock);
+        InitializeListHead(&pThread->ChildrenListHead);
     }
     __finally
     {
