@@ -243,7 +243,6 @@ void
         char threadName[20];
         sprintf(threadName, "TestThread%d", i);
 
-        // Use the provided ThreadCreate function to create threads
         STATUS status = ThreadCreate(
             threadName,
             ThreadPriorityDefault,
