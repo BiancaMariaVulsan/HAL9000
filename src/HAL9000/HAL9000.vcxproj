@@ -181,14 +181,14 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="barrier.c" />
-    <ClCompile Include="conditional_variables.c" />
     <ClCompile Include="src\acpi_interface.c" />
     <ClCompile Include="src\acpi_osl.c" />
     <ClCompile Include="src\ap_tramp.c" />
+    <ClCompile Include="src\barrier.c" />
     <ClCompile Include="src\boot_module.c" />
     <ClCompile Include="src\cmd_basic.c" />
     <ClCompile Include="src\cmd_proc_helper.c" />
+    <ClCompile Include="src\conditional_variables.c" />
     <ClCompile Include="src\dmp_process.c" />
     <ClCompile Include="src\process.c" />
     <ClCompile Include="src\cmd_fs_helper.c" />
@@ -288,10 +288,9 @@
     <ClInclude Include="..\shared\kernel\network_utils.h" />
     <ClInclude Include="..\shared\kernel\pci_system.h" />
     <ClInclude Include="..\shared\kernel\thread.h" />
-    <ClInclude Include="barrier.h" />
-    <ClInclude Include="conditional_variables.h" />
     <ClInclude Include="headers\acpi_interface.h" />
     <ClInclude Include="headers\ap_tramp.h" />
+    <ClInclude Include="headers\barrier.h" />
     <ClInclude Include="headers\boot_module.h" />
     <ClInclude Include="headers\cmd_basic.h" />
     <ClInclude Include="headers\cmd_common.h" />
@@ -300,6 +299,7 @@
     <ClInclude Include="headers\cmd_proc_helper.h" />
     <ClInclude Include="headers\cmd_sys_helper.h" />
     <ClInclude Include="headers\cmd_thread_helper.h" />
+    <ClInclude Include="headers\conditional_variables.h" />
     <ClInclude Include="headers\core.h" />
     <ClInclude Include="headers\dmp_ata.h" />
     <ClInclude Include="headers\dmp_common.h" />
