@@ -73,8 +73,8 @@ _CmdReadAndDumpCpuid(
 
 static FUNC_ListFunction _CmdThreadPrint;
 
-// Threads 4.
-static FUNC_ListFunction _CmdThreadInfoPrint;
+// Threads 5.
+static FUNC_ListFunction _CmdMutexInfoPrint;
 
 void
 (__cdecl CmdListCpus)(
@@ -154,17 +154,36 @@ void
     IN          QWORD       NumberOfParameters
     )
 {
-    STATUS status;
-
     ASSERT(NumberOfParameters == 0);
     
     LOG("%10s", "Nr of Existing threads|");
+    LOG("%9U%c", GetNrOfThreads(), '|');
+
     LOG("%10s", "Nr of Ready threads|");
+    LOG("%9U%c", GetNrOfReadyThreads(), '|');
+
     LOG("%10s", "Nr of Blocked threads|");
+    LOG("%9U%c", GetNrOfBlockedThreads(), '|');
+
+    LOG("\n");
+}
+
+// Threads 5.
+void
+(__cdecl CmdListMutexInfo)(
+    IN          QWORD       NumberOfParameters
+    )
+{
+    STATUS status;
+
+    ASSERT(NumberOfParameters == 0);
+
+    LOG("%10s", "Mutex Index|");
+    LOG("%10s", "Mutex Waiting List|");
 
     LOG("\n");
 
-    status = ThreadExecuteForEachThreadEntry(_CmdThreadInfoPrint, NULL);
+    status = ExecuteForEachMutexEntry(_CmdMutexInfoPrint, NULL);
     ASSERT(SUCCEEDED(status));
 }
 
@@ -732,20 +751,26 @@ STATUS
     return STATUS_SUCCESS;
 }
 
-// Threads 4.
+// Threads 5.
 static
 STATUS
-(__cdecl _CmdThreadInfoPrint) (
+(__cdecl _CmdMutexInfoPrint) (
     IN      PLIST_ENTRY     ListEntry,
     IN_OPT  PVOID           FunctionContext
     )
 {
-    UNREFERENCED_PARAMETER(ListEntry);
+    ASSERT(NULL != ListEntry);
     ASSERT(NULL == FunctionContext);
-    
-    LOG("%9U%c", GetNrOfThreads(), '|');
-    LOG("%9U%c", GetNrOfReadyThreads(), '|');
-    LOG("%9U%c", GetNrOfBlockedThreads(), '|');
+
+    PMUTEX pMutex = CONTAINING_RECORD(ListEntry, MUTEX, MutexListEntry);
+    // Iterate through the waiting list
+    for (LIST_ENTRY* pWaiter = pMutex->WaitingList.Flink;
+        pWaiter != &pMutex->WaitingList;
+        pWaiter = pWaiter->Flink)
+    {
+        PTHREAD pThread = CONTAINING_RECORD(pWaiter, THREAD, ReadyList);
+        LOG("%9x%c", pThread->Id, '|');
+    }
 
     LOG("\n");
 

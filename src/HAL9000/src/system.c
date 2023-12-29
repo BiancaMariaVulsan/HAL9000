@@ -58,7 +58,10 @@ SystemPreinit(
     CorePreinit();
     NetworkStackPreinit();
     ProcessSystemPreinit();
+    // Userprog 7.
     SyscallPreinitSystem();
+    // Threads 5.
+    MutexSystemInit();
 }
 
 STATUS

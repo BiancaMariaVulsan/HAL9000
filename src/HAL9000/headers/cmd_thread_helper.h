@@ -3,9 +3,10 @@
 #include "cmd_common.h"
 
 FUNC_GenericCommand CmdListCpus;
-// Threads 4.
 FUNC_GenericCommand CmdListThreads;
-
+// Threads 5.
+FUNC_GenericCommand CmdListMutexInfo;
+// Threads 4.
 FUNC_GenericCommand CmdListThreadInfo;
 FUNC_GenericCommand CmdYield;
 FUNC_GenericCommand CmdRunTest;

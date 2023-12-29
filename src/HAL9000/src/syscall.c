@@ -32,10 +32,7 @@ typedef struct {
 LIST_ENTRY globalVariablesHead;
 LOCK globalVariablesLock;
 
-// Userprog 8.
-LIST_ENTRY gMutexHead;
-LOCK gMutexLock;
-
+// Userprog 7.
 void 
 SyscallPreinitSystem(
     void
@@ -43,9 +40,6 @@ SyscallPreinitSystem(
 {
     LockInit(&globalVariablesLock);
     InitializeListHead(&globalVariablesHead);
-
-    LockInit(&gMutexLock);
-    InitializeListHead(&gMutexHead);
 }
 
 void
@@ -502,7 +496,6 @@ SyscallMutexInit(
     OUT         UM_HANDLE* Mutex
 )
 {
-    INTR_STATE oldState;
     if (Mutex == NULL) {
         return STATUS_INVALID_PARAMETER1;
     }
@@ -511,12 +504,6 @@ SyscallMutexInit(
     MutexInit(mutex, FALSE);
     // Set the UM_HANDLE to the mutex pointer
     *Mutex = (UM_HANDLE)mutex;
-
-    // Acquire the global lock to protect access to the list
-    LockAcquire(&gMutexLock, &oldState);
-    InsertTailList(&gMutexHead, &mutex->MutexListEntry);
-    // Release the global lock
-    LockRelease(&gMutexLock, oldState);
 
     return STATUS_SUCCESS;
 }
@@ -565,25 +552,7 @@ SyscallMutexDestroy(
         return STATUS_INVALID_PARAMETER1;
     }
 
-    // Acquire the global lock to protect access to the list
-    INTR_STATE oldState;
-    LockAcquire(&gMutexLock, &oldState);
-
-    // Remove the mutex entry from the list
-    PMUTEX kernelMutex = (PMUTEX)Mutex;
-    // Search for the mutex entry in the list
-    PLIST_ENTRY crtEntry = gMutexHead.Flink;
-    while (crtEntry != &gMutexHead) {
-		if (crtEntry == &kernelMutex->MutexListEntry) {
-			// Found the mutex entry, remove it from the list
-			RemoveEntryList(crtEntry);
-			break;
-		}
-		crtEntry = crtEntry->Flink;
-	}
-
-    // Release the global lock
-    LockRelease(&gMutexLock, oldState);
+    MutexDestroy((PMUTEX)Mutex);
 
     return STATUS_SUCCESS;
 }
