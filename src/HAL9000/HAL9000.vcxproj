@@ -181,6 +181,8 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="barrier.c" />
+    <ClCompile Include="conditional_variables.c" />
     <ClCompile Include="src\acpi_interface.c" />
     <ClCompile Include="src\acpi_osl.c" />
     <ClCompile Include="src\ap_tramp.c" />
@@ -286,6 +288,8 @@
     <ClInclude Include="..\shared\kernel\network_utils.h" />
     <ClInclude Include="..\shared\kernel\pci_system.h" />
     <ClInclude Include="..\shared\kernel\thread.h" />
+    <ClInclude Include="barrier.h" />
+    <ClInclude Include="conditional_variables.h" />
     <ClInclude Include="headers\acpi_interface.h" />
     <ClInclude Include="headers\ap_tramp.h" />
     <ClInclude Include="headers\boot_module.h" />

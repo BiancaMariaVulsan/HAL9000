@@ -4,6 +4,8 @@
 
 FUNC_GenericCommand CmdListCpus;
 FUNC_GenericCommand CmdListThreads;
+// Threads 7.
+FUNC_GenericCommand CmdTestCondVars;
 // Threads 5.
 FUNC_GenericCommand CmdListMutexInfo;
 // Threads 4.

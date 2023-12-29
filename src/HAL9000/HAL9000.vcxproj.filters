@@ -402,6 +402,12 @@
     <ClCompile Include="src\test_process.c">
       <Filter>Source Files\debug\test\userprog</Filter>
     </ClCompile>
+    <ClCompile Include="barrier.c">
+      <Filter>Source Files\executive</Filter>
+    </ClCompile>
+    <ClCompile Include="conditional_variables.c">
+      <Filter>Source Files\executive</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="headers\HAL9000.h">
@@ -703,6 +709,12 @@
     </ClInclude>
     <ClInclude Include="headers\test_process.h">
       <Filter>Header Files\debug\test\userprog</Filter>
+    </ClInclude>
+    <ClInclude Include="barrier.h">
+      <Filter>Header Files\executive</Filter>
+    </ClInclude>
+    <ClInclude Include="conditional_variables.h">
+      <Filter>Header Files\executive</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

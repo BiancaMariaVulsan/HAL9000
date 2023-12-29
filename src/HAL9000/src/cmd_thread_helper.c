@@ -16,6 +16,7 @@
 #include "ex_timer.h"
 #include "vmm.h"
 #include "pit.h"
+//#include "conditional_variables.h"
 
 
 #pragma warning(push)
@@ -185,6 +186,102 @@ void
 
     status = ExecuteForEachMutexEntry(_CmdMutexInfoPrint, NULL);
     ASSERT(SUCCEEDED(status));
+}
+
+//// Threads 7.
+//typedef struct _THREAD_CONTEXT {
+//    PMUTEX mutex;
+//    PCONDITIONAL_VARIABLE condVar;
+//} THREAD_CONTEXT, * PTHREAD_CONTEXT;
+//
+//// Threads 7.
+//DWORD
+//(__cdecl TestCondVarThread)(
+//    IN_OPT      PVOID       Context
+//    )
+//{
+//    PTHREAD_CONTEXT threadContext = (PTHREAD_CONTEXT)Context;
+//    PMUTEX mutex = threadContext->mutex;
+//    PCONDITIONAL_VARIABLE condVar = threadContext->condVar;
+//
+//    // Acquire the mutex and wait on the conditional variable
+//    MutexAcquire(&mutex);
+//    CondVariableWait(&condVar, &mutex);
+//    MutexRelease(&mutex);
+//
+//    // Perform some work after waking up
+//    LOG("Thread %d woke up!\n", GetCurrentThreadId());
+//
+//    return 0;
+//}
+
+// Threads 7.
+void
+(__cdecl CmdTestCondVars)(
+    IN          QWORD       NumberOfParameters
+    )
+{
+    UNREFERENCED_PARAMETER(NumberOfParameters);
+
+    //// Initialize a mutex and a conditional variable
+    //MUTEX mutex;
+    //MutexInit(&mutex, FALSE); // Non-recursive mutex
+
+    //CONDITIONAL_VARIABLE condVar;
+    //CondVariableInit(&condVar);
+
+    //THREAD_CONTEXT threadContext;
+    //threadContext.mutex = &mutex;
+    //threadContext.condVar = &condVar;
+
+    //// Create multiple threads that wait on the conditional variable
+    //DWORD numThreads = 5;
+    //PTHREAD threads[5];
+
+    //for (DWORD i = 0; i < numThreads; ++i)
+    //{
+    //    char threadName[16];
+    //    sprintf_s(threadName, sizeof(threadName), "TestThread%d", i);
+
+    //    // Use the provided ThreadCreate function to create threads
+    //    STATUS status = ThreadCreate(
+    //        threadName,
+    //        ThreadPriorityDefault,
+    //        TestCondVarThread,
+    //        &condVar,
+    //        &threads[i]
+    //    );
+
+    //    if (!SUCCEEDED(status))
+    //    {
+    //        LOG_FUNC_ERROR("ThreadCreate", status);
+    //        // Handle error: Clean up and return
+    //        for (DWORD j = 0; j < i; ++j)
+    //        {
+    //            ThreadJoin(threads[j]);
+    //            ThreadFree(threads[j]);
+    //        }
+    //        return;
+    //    }
+    //}
+
+    //// Simulate some work before signaling the threads
+    //for (DWORD i = 0; i < 10000000; ++i)
+    //{
+    //    // Perform some work
+    //}
+
+    //// Signal the threads to wake up
+    //MutexAcquire(&mutex);
+    //CondVariableBroadcast(&condVar, &mutex);
+    //MutexRelease(&mutex);
+
+    //// Wait for all threads to finish
+    //for (DWORD i = 0; i < numThreads; ++i)
+    //{
+    //    ThreadJoin(threads[i]);
+    //    ThreadFree(threads[i]);
+    //}
 }
 
 void

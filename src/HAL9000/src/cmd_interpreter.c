@@ -72,6 +72,8 @@ static const COMMAND_DEFINITION COMMANDS[] =
     { "threadinfo", "Displays thread info", CmdListThreadInfo, 0, 0},
     // Threads 5.
     { "displaymutex", "Displays mutex list", CmdListMutexInfo, 0, 0},
+    // Threads 7.
+    { "displaymutex", "Test conditional variables", CmdTestCondVars, 0, 0},
 
     { "run", "$TEST [$NO_OF_THREADS]\n\tRuns the $TEST specified"
              "\n\t$NO_OF_THREADS the number of threads for running the test,"

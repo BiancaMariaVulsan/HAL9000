@@ -64,6 +64,47 @@ SystemPreinit(
     MutexSystemInit();
 }
 
+// Threads 8.
+static
+STATUS
+InfiniteLoopFunction(
+    IN_OPT PVOID Context
+)
+{
+    UNREFERENCED_PARAMETER(Context);
+
+    LOGP("Hello there!\n");
+
+    // warning C4127: conditional expression is constant
+    #pragma warning(suppress:4127)
+    while (TRUE);
+}
+
+// Threads 8.
+void
+MakeCPUsNonPreemptable(
+    void
+)
+{
+    // Send IPI to all CPUs to execute the infinite loop
+    SMP_DESTINATION dest = { 0 };
+    STATUS status = SmpSendGenericIpiEx(InfiniteLoopFunction,
+        NULL,
+        NULL,
+        NULL,
+        FALSE,
+        SmpIpiSendToAllIncludingSelf,
+        dest
+    );
+
+    if (!SUCCEEDED(status))
+    {
+        LOG_FUNC_ERROR("SmpSendGenericIpi", status);
+    }
+
+    // The CPUs are now executing an infinite loop and HAL9000 is hung.
+}
+
 STATUS
 SystemInit(
     IN  ASM_PARAMETERS*     Parameters
@@ -317,6 +358,9 @@ SystemInit(
     }
 
     LOGL("Network stack successfully initialized\n");
+
+    // Threads 8.
+    //MakeCPUsNonPreemptable();
 
     return status;
 }
