@@ -290,3 +290,16 @@ void
 ThreadSetPriority(
     IN      THREAD_PRIORITY     NewPriority
     );
+
+
+// Threads 4.
+QWORD
+GetNrOfThreads();
+
+// Threads 4.
+QWORD
+GetNrOfReadyThreads();
+
+// Threads 4.
+QWORD
+GetNrOfBlockedThreads();

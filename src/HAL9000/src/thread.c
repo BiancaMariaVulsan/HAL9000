@@ -37,6 +37,11 @@ typedef struct _THREAD_SYSTEM_DATA
 
     _Guarded_by_(ReadyThreadsLock)
     LIST_ENTRY          ReadyThreadsList;
+
+    // Threads 4.
+    QWORD               NrOfThreads;
+    QWORD			    NrOfReadyThreads;
+    QWORD			    NrOfBlockedThreads;
 } THREAD_SYSTEM_DATA, *PTHREAD_SYSTEM_DATA;
 
 static THREAD_SYSTEM_DATA m_threadSystemData;
@@ -147,6 +152,11 @@ ThreadSystemPreinit(
 
     InitializeListHead(&m_threadSystemData.ReadyThreadsList);
     LockInit(&m_threadSystemData.ReadyThreadsLock);
+
+    // Threads 4.
+    m_threadSystemData.NrOfThreads = 0;
+    m_threadSystemData.NrOfReadyThreads = 0;
+    m_threadSystemData.NrOfBlockedThreads = 0;
 }
 
 STATUS
@@ -490,6 +500,9 @@ ThreadYield(
     LockAcquire(&m_threadSystemData.ReadyThreadsLock, &dummyState);
     if (pThread != pCpu->ThreadData.IdleThread)
     {
+        // Threads 4.
+        m_threadSystemData.NrOfReadyThreads++;
+
         InsertTailList(&m_threadSystemData.ReadyThreadsList, &pThread->ReadyList);
     }
     if (!bForcedYield)
@@ -531,6 +544,9 @@ ThreadBlock(
     LockAcquire(&m_threadSystemData.ReadyThreadsLock, &oldState);
     _ThreadSchedule();
     ASSERT( !LockIsOwner(&m_threadSystemData.ReadyThreadsLock));
+
+    // Threads 4.
+    m_threadSystemData.NrOfBlockedThreads++;
 }
 
 void
@@ -548,6 +564,10 @@ ThreadUnblock(
     ASSERT(ThreadStateBlocked == Thread->State);
 
     LockAcquire(&m_threadSystemData.ReadyThreadsLock, &dummyState);
+    // Threads 4.
+    m_threadSystemData.NrOfReadyThreads++;
+    m_threadSystemData.NrOfBlockedThreads--;
+
     InsertTailList(&m_threadSystemData.ReadyThreadsList, &Thread->ReadyList);
     Thread->State = ThreadStateReady;
     LockRelease(&m_threadSystemData.ReadyThreadsLock, dummyState );
@@ -568,6 +588,9 @@ ThreadExit(
 
     // Threads 2.
     LOG_TRACE_THREAD("Thread [tid = 0x%X] yielded %u times\n", pThread->Id, pThread->TimesYielded);
+
+    // Threads 4.
+    m_threadSystemData.NrOfThreads--;
 
     CpuIntrDisable();
 
@@ -815,6 +838,9 @@ _ThreadInit(
         LockInit(&pThread->BlockLock);
 
         LockAcquire(&m_threadSystemData.AllThreadsLock, &oldIntrState);
+        // Threads 4.
+        m_threadSystemData.NrOfThreads++;
+
         InsertTailList(&m_threadSystemData.AllThreadsList, &pThread->AllList);
         LockRelease(&m_threadSystemData.AllThreadsLock, oldIntrState);
 
@@ -1142,6 +1168,8 @@ _ThreadGetReadyThread(
     ASSERT( LockIsOwner(&m_threadSystemData.ReadyThreadsLock));
 
     pNextThread = NULL;
+    // Threads 4.
+    m_threadSystemData.NrOfReadyThreads--;
 
     pEntry = RemoveHeadList(&m_threadSystemData.ReadyThreadsList);
     if (pEntry == &m_threadSystemData.ReadyThreadsList)
@@ -1215,6 +1243,9 @@ _ThreadDestroy(
     ASSERT(NULL == Context);
 
     LockAcquire(&m_threadSystemData.AllThreadsLock, &oldState);
+    // Threads 4.
+    m_threadSystemData.NrOfThreads--;
+
     RemoveEntryList(&pThread->AllList);
     LockRelease(&m_threadSystemData.AllThreadsLock, oldState);
 
@@ -1265,4 +1296,25 @@ _ThreadKernelFunction(
 
     ThreadExit(exitStatus);
     NOT_REACHED;
+}
+
+// Threads 4.
+QWORD 
+GetNrOfThreads()
+{
+	return m_threadSystemData.NrOfThreads;
+}
+
+// Threads 4.
+QWORD
+GetNrOfReadyThreads()
+{
+	return m_threadSystemData.NrOfReadyThreads;
+}
+
+// Threads 4.
+QWORD
+GetNrOfBlockedThreads()
+{
+	return m_threadSystemData.NrOfBlockedThreads;
 }

@@ -73,6 +73,9 @@ _CmdReadAndDumpCpuid(
 
 static FUNC_ListFunction _CmdThreadPrint;
 
+// Threads 4.
+static FUNC_ListFunction _CmdThreadInfoPrint;
+
 void
 (__cdecl CmdListCpus)(
     IN          QWORD       NumberOfParameters
@@ -143,6 +146,26 @@ void
 
     status = ThreadExecuteForEachThreadEntry(_CmdThreadPrint, NULL );
     ASSERT( SUCCEEDED(status));
+}
+
+// Threads 4.
+void
+(__cdecl CmdListThreadInfo)(
+    IN          QWORD       NumberOfParameters
+    )
+{
+    STATUS status;
+
+    ASSERT(NumberOfParameters == 0);
+    
+    LOG("%10s", "Nr of Existing threads|");
+    LOG("%10s", "Nr of Ready threads|");
+    LOG("%10s", "Nr of Blocked threads|");
+
+    LOG("\n");
+
+    status = ThreadExecuteForEachThreadEntry(_CmdThreadInfoPrint, NULL);
+    ASSERT(SUCCEEDED(status));
 }
 
 void
@@ -704,6 +727,26 @@ STATUS
 
 		LOG("%9x%c", pChildThread->Id, '|');
 	}
+    LOG("\n");
+
+    return STATUS_SUCCESS;
+}
+
+// Threads 4.
+static
+STATUS
+(__cdecl _CmdThreadInfoPrint) (
+    IN      PLIST_ENTRY     ListEntry,
+    IN_OPT  PVOID           FunctionContext
+    )
+{
+    UNREFERENCED_PARAMETER(ListEntry);
+    ASSERT(NULL == FunctionContext);
+    
+    LOG("%9U%c", GetNrOfThreads(), '|');
+    LOG("%9U%c", GetNrOfReadyThreads(), '|');
+    LOG("%9U%c", GetNrOfBlockedThreads(), '|');
+
     LOG("\n");
 
     return STATUS_SUCCESS;
