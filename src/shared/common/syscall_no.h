@@ -28,5 +28,21 @@ typedef enum _SYSCALL_ID
     SyscallIdFileRead,
     SyscallIdFileWrite,
 
+    // Userprog 4.
+    SyscallIdMemset,
+
+    // Userprog 6.
+    SyscallIdDisableSyscalls,
+
+    // Userprog 7.
+    SyscallIdSetGlobalVariable,
+    SyscallIdGetGlobalVariable,
+
+    // Userprog 8.
+    SyscallIdMutexInit,
+    SyscallIdMutexAcquire,
+    SyscallIdMutexRelease,
+    SyscallIdMutexDestroy,
+
     SyscallIdReserved = SyscallIdFileWrite + 1
 } SYSCALL_ID;
