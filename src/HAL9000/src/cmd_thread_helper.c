@@ -17,6 +17,7 @@
 #include "vmm.h"
 #include "pit.h"
 #include "conditional_variables.h"
+#include "rtc.h"
 
 
 #pragma warning(push)
@@ -291,6 +292,11 @@ typedef struct _THREAD_DATA {
 
 QWORD chunkSize;
 
+// Threads 10 - Shared Sum Variable Declaration
+// This version might be slower due to the atomic operations
+_Interlocked_
+volatile DWORD sharedSum = 0;
+
 // Function to be executed by each thread
 STATUS 
 (__cdecl ThreadSumBytes)(
@@ -319,6 +325,12 @@ STATUS
 
     // Update the partial sum in thread-specific data
     threadData->partialSum = sum;
+
+    // Threads 10. Update the shared sum
+    // COMMENT THIS FOR WHEN MESURING THE TIME FOR PROBLEM 9
+    for (QWORD i = 0; i < sum; ++i) {
+        _InterlockedIncrement(&sharedSum);
+    }
 
     // Clean up
     ExFreePoolWithTag(buffer, HEAP_TEST_TAG);
@@ -354,6 +366,7 @@ void
     chunkSize = fileSize / NumberOfThreads;
 
     // Create and run N threads
+    QWORD startTime = RtcGetTickCount();
     for (DWORD i = 0; i < NumberOfThreads; ++i) {
         // Initialize thread data
         threadData[i].fileObject = fileObject;
@@ -381,13 +394,17 @@ void
     }
 
     // Calculate the final sum by adding partial sums from each thread
+    // COMMENT THIS FOR WHEN MESURING THE TIME FOR PROBLEM 10
     QWORD finalSum = 0;
     for (DWORD i = 0; i < NumberOfThreads; ++i) {
         finalSum += threadData[i].partialSum;
     }
+    QWORD endTime = RtcGetTickCount();
+    LOG("The time needed to compute the sum is %u us\n", endTime - startTime);
 
     // Print the final result
     printf("Sum of bytes in the file: %llu\n", finalSum);
+    printf("Sum of bytes in the file: %llu\n", sharedSum);
 
     // Close the file
     IoCloseFile(fileObject);
