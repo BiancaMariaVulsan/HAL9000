@@ -1,0 +1,150 @@
+diff --git a/src-project b/src-project
+index ef1a8ee..6483afe 160000
+--- a/src-project
++++ b/src-project
+@@ -1 +1 @@
+-Subproject commit ef1a8ee01eb386eaeeb8d75ebead9dd74ccc1744
++Subproject commit 6483afe8be1e264471f7c76264f3380d18687cf8-dirty
+diff --git a/src/HAL9000/headers/process_internal.h b/src/HAL9000/headers/process_internal.h
+index e9af376..bfc1431 100644
+--- a/src/HAL9000/headers/process_internal.h
++++ b/src/HAL9000/headers/process_internal.h
+@@ -58,6 +58,11 @@ typedef struct _PROCESS
+ 
+     // VaSpace used only for UM virtual memory allocations
+     struct _VMM_RESERVATION_SPACE*  VaSpace;
++
++    LOCK                            FrameMapLock;
++    
++    _Guarded_by_(FrameMapLock)
++    LIST_ENTRY                      FrameMappingsHead;
+ } PROCESS, *PPROCESS;
+ 
+ //******************************************************************************
+diff --git a/src/HAL9000/src/process.c b/src/HAL9000/src/process.c
+index e439b67..119deb5 100644
+--- a/src/HAL9000/src/process.c
++++ b/src/HAL9000/src/process.c
+@@ -516,6 +516,9 @@ _ProcessInit(
+         InsertTailList(&m_processData.ProcessList, &pProcess->NextProcess);
+         MutexRelease(&m_processData.ProcessListLock);
+ 
++        InitializeListHead(&pProcess->FrameMappingsHead);
++        LockInit(&pProcess->FrameMapLock);
++
+         LOG_TRACE_PROCESS("Process with PID 0x%X created\n", pProcess->Id);
+     }
+     __finally
+diff --git a/src/HAL9000/src/vmm.c b/src/HAL9000/src/vmm.c
+index db29675..f1477f7 100644
+--- a/src/HAL9000/src/vmm.c
++++ b/src/HAL9000/src/vmm.c
+@@ -13,6 +13,16 @@
+ 
+ #define VMM_SIZE_FOR_RESERVATION_METADATA            (5*TB_SIZE)
+ 
++typedef struct _FRAME_MAPPING
++{
++    PHYSICAL_ADDRESS    PhysicalAddress;
++    PVOID               VirtualAddress;
++
++    QWORD               AccessCount;
++
++    LIST_ENTRY          ListEntry;
++} FRAME_MAPPING, * PFRAME_MAPPING;
++
+ typedef struct _VMM_DATA
+ {
+     VMM_RESERVATION_SPACE   VmmReservationSpace;
+@@ -609,6 +619,11 @@ VmmAllocRegionEx(
+                                      PagingData
+                 );
+ 
++                if (PagingData != NULL && !PagingData->Data.KernelSpace)
++                {
++                    _VmmAddFrameMappings(pa, pBaseAddress, noOfFrames);
++                }
++
+                 // Check if the mapping is backed up by a file
+                 if (FileObject != NULL)
+                 {
+@@ -814,6 +829,11 @@ VmmSolvePageFault(
+                                  PagingData
+                                  );
+ 
++            if (!PagingData->Data.KernelSpace)
++            {
++                _VmmAddFrameMappings(pa, alignedAddress, 1);
++            }
++
+             // 3. If the virtual address is backed by a file read its contents
+             if (pBackingFile != NULL)
+             {
+@@ -1370,4 +1390,40 @@ BOOLEAN
+     }
+ 
+     return bContinue;
++}
++
++static
++void
++_VmmAddFrameMappings(
++    IN          PHYSICAL_ADDRESS    PhysicalAddress,
++    IN          PVOID               VirtualAddress,
++    IN          DWORD               FrameCount
++)
++{
++    PPROCESS pProcess;
++    PFRAME_MAPPING pMapping;
++    INTR_STATE intrState;
++
++    pProcess = GetCurrentProcess();
++
++    if (ProcessIsSystem(pProcess))
++    {
++        return;
++    }
++
++    for (DWORD i = 0; i < FrameCount; ++i)
++    {
++        pMapping = ExAllocatePoolWithTag(PoolAllocatePanicIfFail, sizeof(FRAME_MAPPING), HEAP_MMU_TAG, 0);
++
++        pMapping->PhysicalAddress = PtrOffset(PhysicalAddress, i * PAGE_SIZE);
++        pMapping->VirtualAddress = PtrOffset(VirtualAddress, i * PAGE_SIZE);
++        pMapping->AccessCount = 1;
++
++        LockAcquire(&pProcess->FrameMapLock, &intrState);
++        InsertTailList(&pProcess->FrameMappingsHead, &pMapping->ListEntry);
++        LockRelease(&pProcess->FrameMapLock, intrState);
++
++        LOG("Allocated entry from 0x%X -> 0x%X\n",
++            pMapping->VirtualAddress, pMapping->PhysicalAddress);
++    }
+ }
+\ No newline at end of file
+diff --git a/tests/virtualmemory/stack-growth/StackGrowthRecursiveFunction.test b/tests/virtualmemory/stack-growth/StackGrowthRecursiveFunction.test
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/tests/virtualmemory/stack-growth/StackGrowthVariables.test b/tests/virtualmemory/stack-growth/StackGrowthVariables.test
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/tests/virtualmemory/swap/SwapLinear.test b/tests/virtualmemory/swap/SwapLinear.test
+deleted file mode 100644
+index a240937..0000000
+--- a/tests/virtualmemory/swap/SwapLinear.test
++++ /dev/null
+@@ -1,2 +0,0 @@
+-[SwapLinear.exe]:[Successfully validated the interface!]
+-[SwapLinear.exe]:[Returned from main function, will call ThreadExit with status 0x0!]
+diff --git a/tests/virtualmemory/swap/SwapMultiple.test b/tests/virtualmemory/swap/SwapMultiple.test
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/tests/virtualmemory/swap/SwapMultipleShared.test b/tests/virtualmemory/swap/SwapMultipleShared.test
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/tests/virtualmemory/swap/SwapZeros.test b/tests/virtualmemory/swap/SwapZeros.test
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/tests/virtualmemory/swap/SwapZerosWritten.test b/tests/virtualmemory/swap/SwapZerosWritten.test
+deleted file mode 100644
+index e69de29..0000000

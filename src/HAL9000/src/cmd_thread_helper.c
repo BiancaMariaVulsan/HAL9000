@@ -280,6 +280,120 @@ void
     MutexDestroy(mutex);
 }
 
+
+// Threads 9.
+typedef struct _THREAD_DATA {
+    PFILE_OBJECT fileObject;
+    QWORD startOffset;
+    QWORD endOffset;
+    QWORD partialSum;
+} THREAD_DATA, * PTHREAD_DATA;
+
+QWORD chunkSize;
+
+// Function to be executed by each thread
+STATUS 
+(__cdecl ThreadSumBytes)(
+    INOUT   PVOID    context
+) 
+{
+    PTHREAD_DATA threadData = (PTHREAD_DATA)context;
+
+    // Read a chunk of the file
+    PVOID buffer = ExAllocatePoolWithTag(PoolAllocateZeroMemory, (DWORD)chunkSize, HEAP_TEST_TAG, 0);
+    QWORD bytesRead;
+
+    STATUS readStatus = IoReadFile(threadData->fileObject, chunkSize, &threadData->startOffset, buffer, &bytesRead);
+
+    if (readStatus != STATUS_SUCCESS) {
+        LOG_ERROR("Error reading from file\n");
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    // Calculate the sum of bytes in the chunk
+    QWORD sum = 0;
+    PBYTE byteBuffer = (PBYTE)buffer;
+    for (QWORD i = 0; i < bytesRead; ++i) {
+        sum += byteBuffer[i];
+    }
+
+    // Update the partial sum in thread-specific data
+    threadData->partialSum = sum;
+
+    // Clean up
+    ExFreePoolWithTag(buffer, HEAP_TEST_TAG);
+
+    return STATUS_SUCCESS;
+}
+
+// Threads 9.
+void
+(__cdecl CmdCalculateSum)(
+    IN          QWORD       NumberOfParameters,
+    IN          DWORD       NumberOfThreads,
+    IN          char*       FileName
+    )
+{
+    ASSERT(NumberOfParameters == 2);
+
+    // Open the file for reading
+    PFILE_OBJECT fileObject;
+    IoCreateFile(&fileObject, FileName, FALSE, FALSE, 0);
+
+    if (!fileObject) {
+        LOG_ERROR("Error opening file\n");
+        return;
+    }
+
+    // Create an array to store thread handles and thread data
+    PTHREAD* threads = ExAllocatePoolWithTag(PoolAllocateZeroMemory, NumberOfThreads * sizeof(PTHREAD), HEAP_TEST_TAG, 0);
+    THREAD_DATA* threadData = ExAllocatePoolWithTag(PoolAllocateZeroMemory, NumberOfThreads * sizeof(THREAD_DATA), HEAP_TEST_TAG, 0);
+
+    // Calculate the chunk size for each thread
+    QWORD fileSize = fileObject->FileSize;
+    chunkSize = fileSize / NumberOfThreads;
+
+    // Create and run N threads
+    for (DWORD i = 0; i < NumberOfThreads; ++i) {
+        // Initialize thread data
+        threadData[i].fileObject = fileObject;
+        threadData[i].startOffset = i * chunkSize;
+        threadData[i].endOffset = (i == NumberOfThreads - 1) ? fileSize : (i + 1) * chunkSize;
+        threadData[i].partialSum = 0;
+
+        // Create the thread
+        STATUS threadStatus = ThreadCreate("SumThread", ThreadPriorityDefault, ThreadSumBytes, &threadData[i], &threads[i]);
+
+        if (threadStatus != STATUS_SUCCESS) {
+            LOG_ERROR("Error creating thread %d\n", i);
+            return;
+        }
+    }
+
+    // Wait for all threads to finish
+    for (DWORD i = 0; i < NumberOfThreads; ++i) {
+        STATUS status;
+        ThreadWaitForTermination(threads[i], &status);
+        if (status != STATUS_SUCCESS) {
+			LOG_ERROR("Error waiting for thread %d\n", i);
+			return;
+		}
+    }
+
+    // Calculate the final sum by adding partial sums from each thread
+    QWORD finalSum = 0;
+    for (DWORD i = 0; i < NumberOfThreads; ++i) {
+        finalSum += threadData[i].partialSum;
+    }
+
+    // Print the final result
+    printf("Sum of bytes in the file: %llu\n", finalSum);
+
+    // Close the file
+    IoCloseFile(fileObject);
+}
+
+
 void
 (__cdecl CmdYield)(
     IN          QWORD       NumberOfParameters
