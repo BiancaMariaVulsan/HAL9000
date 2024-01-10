@@ -71,6 +71,10 @@ bin/*
 temp/*
 VM/*
 
+# VS
+.vs
+.vscode
+
 # HAL tests
 *.result
 *.outcome
