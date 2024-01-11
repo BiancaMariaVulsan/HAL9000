@@ -89,6 +89,15 @@ typedef struct _THREAD
     // MUST be non-NULL for all threads which belong to user-mode processes
     PVOID                   UserStack;
 
+    TID 				    ParentId;
+    APIC_ID				    ParentCPUId;
+
+    LOCK 				    ListChildrenLock;
+    LIST_ENTRY  			ListChildrenEntry;   
+
+    _Guarded_by_(ListChildrenLock)
+    LIST_ENTRY 			        ListChildren;
+
     struct _PROCESS*        Process;
 } THREAD, *PTHREAD;
 

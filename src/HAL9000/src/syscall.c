@@ -7,6 +7,7 @@
 #include "mmu.h"
 #include "process_internal.h"
 #include "dmp_cpu.h"
+#include "thread.h"
 
 extern void SyscallEntry();
 
@@ -66,7 +67,25 @@ SyscallHandler(
         {
         case SyscallIdIdentifyVersion:
             status = SyscallValidateInterface((SYSCALL_IF_VERSION)*pSyscallParameters);
+            break; 
+        case SyscallIdFileWrite:
+                status = SyscallFileWrite((UM_HANDLE)pSyscallParameters[0],
+                    (PVOID)pSyscallParameters[1],
+                    (QWORD)pSyscallParameters[2],
+                    (QWORD*)pSyscallParameters[3]);
+                break;
+        case SyscallIdThreadExit:
+            status = SyscallThreadExit((STATUS)pSyscallParameters[0]);
             break;
+        case SyscallIdProcessExit:
+            status = SyscallProcessExit((STATUS)pSyscallParameters[0]);
+            break;
+        case SyscallIdMemset:
+			status = SyscallMemset((PBYTE)pSyscallParameters[0],
+				(DWORD)pSyscallParameters[1],
+				(BYTE)pSyscallParameters[2]);
+			break;
+
         // STUDENT TODO: implement the rest of the syscalls
         default:
             LOG_ERROR("Unimplemented syscall called from User-space!\n");
@@ -170,3 +189,110 @@ SyscallValidateInterface(
 }
 
 // STUDENT TODO: implement the rest of the syscalls
+STATUS
+SyscallFileWrite(
+    IN  UM_HANDLE                   FileHandle,
+    IN_READS_BYTES(BytesToWrite)
+    PVOID                           Buffer,
+    IN  QWORD                       BytesToWrite,
+    OUT QWORD*                      BytesWritten
+)
+{
+
+    ASSERT(Buffer != NULL);
+
+    if (BytesWritten == NULL) {
+        return STATUS_INVALID_PARAMETER4;
+    }
+
+    if (FileHandle == UM_FILE_HANDLE_STDOUT) {
+        // log the message when writing to stdout
+        LOG("[%s]:[%s]\n", ProcessGetName(NULL), Buffer);
+        if (BytesWritten != NULL) {
+            *BytesWritten = BytesToWrite; // !!!
+            return STATUS_SUCCESS;
+        }
+
+    }
+
+    LOG_ERROR("File handle 0x%x is not supported!\n", FileHandle);
+    return STATUS_UNSUPPORTED;
+}
+
+STATUS
+SyscallProcessExit(
+    IN  STATUS                      ExitStatus
+)
+{
+    LOG_TRACE_USERMODE("Will exit process with status 0x%x\n", ExitStatus);
+    PROCESS* process = GetCurrentProcess();
+    process->TerminationStatus = ExitStatus;
+    ProcessTerminate(process);
+    return STATUS_SUCCESS;
+}
+
+STATUS
+SyscallThreadExit(
+    IN  STATUS                      ExitStatus
+)
+{
+    LOG_TRACE_USERMODE("Will exit thread with status 0x%x\n", ExitStatus);
+    ThreadExit(ExitStatus);
+    return STATUS_SUCCESS;
+}
+
+STATUS
+SyscallMemset(
+    OUT_WRITES(BytesToWrite) PBYTE Address,
+    IN DWORD BytesToWrite,
+    IN BYTE ValueToWrite
+)
+{
+    if (Address == NULL) {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+    STATUS status = MmuIsBufferValid(Address, BytesToWrite, PAGE_RIGHTS_WRITE, GetCurrentProcess());
+    if (!SUCCEEDED(status)) {
+        LOG_FUNC_ERROR("MmuIsBufferValid", status);
+        return status;
+    }
+    memset(Address, ValueToWrite, BytesToWrite);
+    return STATUS_SUCCESS;
+
+}
+
+
+STATUS
+SyscallThreadCreate(
+    IN      PFUNC_ThreadStart       StartFunction,
+    IN_OPT  PVOID                   Context,
+    OUT     UM_HANDLE*              ThreadHandle
+)
+{
+	STATUS status;
+	PPROCESS pProcess;
+	PTHREAD pThread;
+    char ThreadName[MAX_PATH];
+
+	ASSERT(StartFunction != NULL);
+	ASSERT(ThreadHandle != NULL);
+
+	status = STATUS_SUCCESS;
+	pProcess = NULL;
+	pThread = NULL;
+
+	pProcess = GetCurrentProcess();
+	ASSERT(pProcess != NULL);
+
+    snprintf(ThreadName, MAX_PATH, "UM Thread %u", pProcess->NumberOfThreads);
+    status = ThreadCreate(ThreadName, ThreadPriorityDefault, StartFunction, Context, &pThread);
+	if (!SUCCEEDED(status))
+	{
+		return status;
+	}
+
+	*ThreadHandle = (UM_HANDLE)pThread;
+
+	return status;
+}

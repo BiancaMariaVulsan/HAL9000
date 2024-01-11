@@ -146,6 +146,19 @@ _IsrExceptionHandler(
     // no use in logging if we solved the problem
     if (!exceptionHandled)
     {
+
+        // verific daca e zona de kernel sau user
+        // in Registers.CS am instructiunea
+        if (!GdtIsSegmentPrivileged((WORD)StackPointer->Registers.CS)) {
+            // daca adresa nu e din kernel, termin procesul
+            PPROCESS process = GetCurrentProcess();
+            ASSERT(process != NULL);
+            LOG_ERROR("Process %s caused an exception that could not be handled and will be terminated!\n",
+                ProcessGetName(process));
+            ProcessTerminate(process);
+        }
+
+
         PVOID* pCurrentStackItem;
         DWORD noOfStackElementsToDump;
         PPCPU pCpu;
