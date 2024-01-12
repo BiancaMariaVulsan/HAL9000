@@ -13,6 +13,14 @@
 
 #define VMM_SIZE_FOR_RESERVATION_METADATA            (5*TB_SIZE)
 
+typedef struct _FRAME_MAPPING
+ {
+    PHYSICAL_ADDRESS    PhysicalAddress;
+    PVOID               VirtualAddress;
+    QWORD               AccessCount;
+    LIST_ENTRY          ListEntry;
+    } FRAME_MAPPING, * PFRAME_MAPPING;
+
 typedef struct _VMM_DATA
 {
     VMM_RESERVATION_SPACE   VmmReservationSpace;
@@ -66,6 +74,14 @@ typedef struct _VMM_RETRIEVE_PHYS_ACCESS_PAGE_WALK_CONTEXT
 } VMM_RETRIEVE_PHYS_ACCESS_PAGE_WALK_CONTEXT, *PVMM_RETRIEVE_PHYS_ACCESS_PAGE_WALK_CONTEXT;
 
 static VMM_DATA m_vmmData;
+
+static
+void
+_VmmAddFrameMappings(
+    IN          PHYSICAL_ADDRESS    PhysicalAddress,
+    IN          PVOID               VirtualAddress,
+    IN          DWORD               FrameCount
+    );
 
 static
 void
@@ -609,6 +625,11 @@ VmmAllocRegionEx(
                                      PagingData
                 );
 
+                if (PagingData != NULL && !PagingData->Data.KernelSpace)
+                {
+                    _VmmAddFrameMappings(pa, pBaseAddress, noOfFrames);
+                }
+
                 // Check if the mapping is backed up by a file
                 if (FileObject != NULL)
                 {
@@ -813,6 +834,11 @@ VmmSolvePageFault(
                                  uncacheable,
                                  PagingData
                                  );
+
+            if (!PagingData->Data.KernelSpace)
+            {
+                _VmmAddFrameMappings(pa, alignedAddress, 1);
+            }
 
             // 3. If the virtual address is backed by a file read its contents
             if (pBackingFile != NULL)
@@ -1370,4 +1396,88 @@ BOOLEAN
     }
 
     return bContinue;
+}
+
+// Virtual Memory 3.
+static
+void
+_VmmAddFrameMappings(
+    IN          PHYSICAL_ADDRESS    PhysicalAddress,
+    IN          PVOID               VirtualAddress,
+    IN          DWORD               FrameCount
+     )
+     {
+    PPROCESS pProcess;
+    PFRAME_MAPPING pMapping;
+    INTR_STATE intrState;
+    
+    pProcess = GetCurrentProcess();
+    
+    if (ProcessIsSystem(pProcess))
+    {
+        return;
+    }
+    
+    for (DWORD i = 0; i < FrameCount; ++i)
+    {
+        pMapping = ExAllocatePoolWithTag(PoolAllocatePanicIfFail, sizeof(FRAME_MAPPING), HEAP_MMU_TAG, 0);
+        
+        pMapping->PhysicalAddress = PtrOffset(PhysicalAddress, i * PAGE_SIZE);
+        pMapping->VirtualAddress = PtrOffset(VirtualAddress, i * PAGE_SIZE);
+        pMapping->AccessCount = 1;
+        
+        LockAcquire(&pProcess->FrameMapLock, &intrState);
+        InsertTailList(&pProcess->FrameMappingsHead, &pMapping->ListEntry);
+        LockRelease(&pProcess->FrameMapLock, intrState);
+        
+        LOG("Allocated entry from 0x%X -> 0x%X\n", pMapping->VirtualAddress, pMapping->PhysicalAddress);
+    }
+}
+
+void
+VmmTick(
+    void
+)
+{
+    PPROCESS pProcess = GetCurrentProcess();
+    INTR_STATE intrState;
+    
+    LockAcquire(&pProcess->FrameMapLock, &intrState);
+    for (PLIST_ENTRY pCurrentEntry = pProcess->FrameMappingsHead.Flink;
+        pCurrentEntry != &pProcess->FrameMappingsHead;
+        pCurrentEntry = pCurrentEntry->Flink)
+    {
+        BOOLEAN bAccessed;
+        BOOLEAN bDirty;
+        PHYSICAL_ADDRESS pa;
+        PML4 cr3;
+        
+            PFRAME_MAPPING pMapping = CONTAINING_RECORD(pCurrentEntry, FRAME_MAPPING, ListEntry);
+        
+            cr3.Raw = (QWORD)pProcess->PagingData->Data.BasePhysicalAddress;
+        
+            pa = VmmGetPhysicalAddressEx(cr3,
+                pMapping->VirtualAddress,
+                &bAccessed,
+                &bDirty);
+            ASSERT(pa == pMapping->PhysicalAddress);
+        
+            // Increment the access count
+            pMapping->AccessCount++;
+    }
+
+    //  Log the pages which were accessed and their access count since the last tick
+    for (PLIST_ENTRY pCurrentEntry = pProcess->FrameMappingsHead.Flink;
+		    pCurrentEntry != &pProcess->FrameMappingsHead;
+		    pCurrentEntry = pCurrentEntry->Flink)
+	{
+		PFRAME_MAPPING pMapping = CONTAINING_RECORD(pCurrentEntry, FRAME_MAPPING, ListEntry);
+		
+		if (pMapping->AccessCount > 0)
+		{
+			LOG("Page 0x%X was accessed %u times\n", pMapping->VirtualAddress, pMapping->AccessCount);
+		}
+	}
+
+    LockRelease(&pProcess->FrameMapLock, intrState);
 }

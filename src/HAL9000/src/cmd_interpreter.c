@@ -107,7 +107,7 @@ static const COMMAND_DEFINITION COMMANDS[] =
     { "bitecookie", "Causes a GS cookie corruption to assert", CmdBiteCookie, 0, 0},
 
     { "help", "Displays this help menu", _CmdPrintHelp, 0, 0},
-    {"threadfun", "Exam function", CmdThreadFun, 0, 0}
+    { "testdescendents", "Displays all descendents", CmdTestDescendents, 0, 0},
 };
 
 #define NO_OF_COMMANDS      ARRAYSIZE(COMMANDS)

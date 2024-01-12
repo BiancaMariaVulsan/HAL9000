@@ -307,9 +307,15 @@ SyscallFileWrite(
     OUT QWORD*                      BytesWritten
     );
 
+
 STATUS
-SyscallMemset(
-    OUT_WRITES(BytesToWrite) PBYTE Address,
-    IN DWORD BytesToWrite,
-    IN BYTE ValueToWrite
+SyscallSwapOut(
+    IN      PVOID       VirtualAddress
+    );
+
+STATUS
+SyscallGetNumberOfThreadsInInterval(
+    IN                              QWORD   StartCreateTime,
+    IN                              QWORD   EndCreateTime,
+    OUT                             QWORD* NumberOfThreads
     );

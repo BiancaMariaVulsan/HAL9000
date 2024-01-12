@@ -8,6 +8,7 @@
 #include "process_internal.h"
 #include "dmp_cpu.h"
 #include "thread.h"
+#include "vmm.h"
 
 extern void SyscallEntry();
 
@@ -67,26 +68,42 @@ SyscallHandler(
         {
         case SyscallIdIdentifyVersion:
             status = SyscallValidateInterface((SYSCALL_IF_VERSION)*pSyscallParameters);
-            break; 
+            break;
+        // STUDENT TODO: implement the rest of the syscalls
         case SyscallIdFileWrite:
-                status = SyscallFileWrite((UM_HANDLE)pSyscallParameters[0],
-                    (PVOID)pSyscallParameters[1],
-                    (QWORD)pSyscallParameters[2],
-                    (QWORD*)pSyscallParameters[3]);
-                break;
+            status = SyscallFileWrite((UM_HANDLE)pSyscallParameters[0],
+                (PVOID)pSyscallParameters[1],
+                (QWORD)pSyscallParameters[2],
+                (QWORD*)pSyscallParameters[3]);
+            break;
         case SyscallIdThreadExit:
             status = SyscallThreadExit((STATUS)pSyscallParameters[0]);
             break;
         case SyscallIdProcessExit:
             status = SyscallProcessExit((STATUS)pSyscallParameters[0]);
             break;
-        case SyscallIdMemset:
-			status = SyscallMemset((PBYTE)pSyscallParameters[0],
-				(DWORD)pSyscallParameters[1],
-				(BYTE)pSyscallParameters[2]);
+        case SyscallIdVirtualAlloc:
+            status = SyscallVirtualAlloc(
+                (PVOID)pSyscallParameters[0],
+                (QWORD)pSyscallParameters[1],
+                (VMM_ALLOC_TYPE)pSyscallParameters[2],
+                (PAGE_RIGHTS)pSyscallParameters[3],
+                (UM_HANDLE)pSyscallParameters[4],
+                (QWORD)pSyscallParameters[5],
+                (PVOID*)pSyscallParameters[6]
+            );
+            break;
+        case SyscallIdSwapOut:
+            status = SyscallSwapOut((PVOID)pSyscallParameters[0]);
+			break;
+        case SyscallIdGetNumberOfThreadsInInterval:
+			status = SyscallGetNumberOfThreadsInInterval(
+				(QWORD)pSyscallParameters[0],
+				(QWORD)pSyscallParameters[1],
+				(QWORD*)pSyscallParameters[2]
+			);
 			break;
 
-        // STUDENT TODO: implement the rest of the syscalls
         default:
             LOG_ERROR("Unimplemented syscall called from User-space!\n");
             status = STATUS_UNSUPPORTED;
@@ -189,13 +206,14 @@ SyscallValidateInterface(
 }
 
 // STUDENT TODO: implement the rest of the syscalls
+
 STATUS
 SyscallFileWrite(
     IN  UM_HANDLE                   FileHandle,
     IN_READS_BYTES(BytesToWrite)
     PVOID                           Buffer,
     IN  QWORD                       BytesToWrite,
-    OUT QWORD*                      BytesWritten
+    OUT QWORD* BytesWritten
 )
 {
 
@@ -206,10 +224,9 @@ SyscallFileWrite(
     }
 
     if (FileHandle == UM_FILE_HANDLE_STDOUT) {
-        // log the message when writing to stdout
         LOG("[%s]:[%s]\n", ProcessGetName(NULL), Buffer);
         if (BytesWritten != NULL) {
-            *BytesWritten = BytesToWrite; // !!!
+            *BytesWritten = BytesToWrite;
             return STATUS_SUCCESS;
         }
 
@@ -241,58 +258,72 @@ SyscallThreadExit(
     return STATUS_SUCCESS;
 }
 
+// Virtual Memory 1.
 STATUS
-SyscallMemset(
-    OUT_WRITES(BytesToWrite) PBYTE Address,
-    IN DWORD BytesToWrite,
-    IN BYTE ValueToWrite
-)
-{
-    if (Address == NULL) {
-        return STATUS_INVALID_PARAMETER1;
+SyscallVirtualAlloc(
+    IN_OPT      PVOID                   BaseAddress,
+    IN          QWORD                   Size,
+    IN          VMM_ALLOC_TYPE          AllocType,
+    IN          PAGE_RIGHTS             PageRights,
+    IN_OPT      UM_HANDLE               FileHandle,
+    IN_OPT      QWORD                   Key,
+    OUT         PVOID* AllocatedAddress
+) {
+    UNREFERENCED_PARAMETER(Key);
+    UNREFERENCED_PARAMETER(FileHandle);
+
+    if (!SUCCEEDED(MmuIsBufferValid(AllocatedAddress, sizeof(PVOID), PAGE_RIGHTS_WRITE, GetCurrentProcess())))
+    {
+        return STATUS_INVALID_PARAMETER6;
     }
 
-    STATUS status = MmuIsBufferValid(Address, BytesToWrite, PAGE_RIGHTS_WRITE, GetCurrentProcess());
-    if (!SUCCEEDED(status)) {
-        LOG_FUNC_ERROR("MmuIsBufferValid", status);
-        return status;
-    }
-    memset(Address, ValueToWrite, BytesToWrite);
+    *AllocatedAddress = VmmAllocRegionEx(
+        BaseAddress,
+        Size,
+        AllocType,
+        PageRights,
+        FALSE,
+        NULL,
+        GetCurrentProcess()->VaSpace,
+        GetCurrentProcess()->PagingData,
+        NULL
+    );
+
     return STATUS_SUCCESS;
-
 }
 
-
 STATUS
-SyscallThreadCreate(
-    IN      PFUNC_ThreadStart       StartFunction,
-    IN_OPT  PVOID                   Context,
-    OUT     UM_HANDLE*              ThreadHandle
+SyscallSwapOut(
+    IN      PVOID       VirtualAddress
 )
 {
-	STATUS status;
-	PPROCESS pProcess;
-	PTHREAD pThread;
-    char ThreadName[MAX_PATH];
-
-	ASSERT(StartFunction != NULL);
-	ASSERT(ThreadHandle != NULL);
-
-	status = STATUS_SUCCESS;
-	pProcess = NULL;
-	pThread = NULL;
-
-	pProcess = GetCurrentProcess();
-	ASSERT(pProcess != NULL);
-
-    snprintf(ThreadName, MAX_PATH, "UM Thread %u", pProcess->NumberOfThreads);
-    status = ThreadCreate(ThreadName, ThreadPriorityDefault, StartFunction, Context, &pThread);
-	if (!SUCCEEDED(status))
+    if (!SUCCEEDED(MmuIsBufferValid(VirtualAddress, sizeof(PVOID), PAGE_RIGHTS_WRITE, GetCurrentProcess())))
 	{
-		return status;
+		return STATUS_INVALID_PARAMETER1;
 	}
 
-	*ThreadHandle = (UM_HANDLE)pThread;
+    // TODO: Implement this function if I have time
+	//VmmSwapOut(VirtualAddress, GetCurrentProcess()->PagingData);
 
-	return status;
+	return STATUS_SUCCESS;
+}
+
+// Userprog 3
+STATUS
+SyscallGetNumberOfThreadsInInterval(
+    IN                              QWORD   StartCreateTime,
+    IN                              QWORD   EndCreateTime,
+    OUT                             QWORD*  NumberOfThreads
+)
+{
+    UNREFERENCED_PARAMETER(StartCreateTime);
+    UNREFERENCED_PARAMETER(EndCreateTime);
+
+    if (!SUCCEEDED(MmuIsBufferValid(NumberOfThreads, sizeof(QWORD), PAGE_RIGHTS_WRITE, GetCurrentProcess())))
+	{
+		return STATUS_INVALID_PARAMETER3;
+	}
+
+    // TODO: Implement this function if I have time
+    return STATUS_SUCCESS;
 }

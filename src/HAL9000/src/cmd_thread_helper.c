@@ -137,14 +137,11 @@ void
     LOG("%10s", "Prt ticks|");
     LOG("%10s", "Ttl ticks|");
     LOG("%10s", "Process|");
-    LOG("%10s", "Parent TID|"); // %10s - string de 10 caractere
     LOG("\n");
 
     status = ThreadExecuteForEachThreadEntry(_CmdThreadPrint, NULL );
     ASSERT( SUCCEEDED(status));
 }
-
-// Threads 3
 
 static STATUS
 (__cdecl _DummyFunction)
@@ -153,80 +150,81 @@ static STATUS
     PTHREAD pThread = GetCurrentThread();
     ASSERT(NULL != pThread);
 
-    LOGL("Hello from DummyFunction and my name is %s\n", pThread->Name);
+    LOGL("My name is %s\n", pThread->Name);
     return STATUS_SUCCESS;
 }
 
 
 static STATUS
-(__cdecl _SpawnThreadFunction)
+(__cdecl _FirstThreadFunction)
 (IN_OPT PVOID Context)
 {
     ASSERT(NULL == Context);
 
-    LOGL("Hello from SpawnThread\n");
+    LOGL("Hello from First Thread\n");
 
-    PTHREAD pSpawnThread1;
-    ThreadCreate("SpawnThread1", ThreadPriorityDefault, _DummyFunction, NULL, &pSpawnThread1);
-    PTHREAD pSpawnThread2;
-    ThreadCreate("SpawnThread2", ThreadPriorityDefault, _DummyFunction, NULL, &pSpawnThread2);
-
-    STATUS status;
-    ThreadWaitForTermination(pSpawnThread1, &status);
-    ThreadWaitForTermination(pSpawnThread2, &status);
-
-    return STATUS_SUCCESS;
-}
-
-static
-STATUS
-(__cdecl _CmdThreadPrintInfoThread) (
-    IN      PLIST_ENTRY     ListEntry,
-    IN_OPT  PVOID           FunctionContext
-    )
-{
-    PTHREAD pThread;
-
-    ASSERT(NULL != ListEntry);
-    ASSERT(NULL == FunctionContext);
-
-    pThread = CONTAINING_RECORD(ListEntry, THREAD, AllList);
-
-    /*: the TID, its Name of the thread, the TID of its Parent and the CPU on which it was spawned*/
-    LOG("[InfoThread] TID=0x%X, Name=%s, Parent=0x%X, ParentCPU=0x%02x\n",
-        pThread->Id, pThread->Name, pThread->ParentId, pThread->ParentCPUId);
-
+    PTHREAD pThread1;
+    ThreadCreate("Thread1", ThreadPriorityDefault, _DummyFunction, NULL, &pThread1);    
+    PTHREAD pThread2;
+    ThreadCreate("Thread2", ThreadPriorityDefault, _DummyFunction, NULL, &pThread2);    
+    PTHREAD pThread3;
+    ThreadCreate("Thread3", ThreadPriorityDefault, _DummyFunction, NULL, &pThread3);    
+    PTHREAD pThread4;
+    ThreadCreate("Thread4", ThreadPriorityDefault, _DummyFunction, NULL, &pThread4);    
+    PTHREAD pThread5;
+    ThreadCreate("Thread5", ThreadPriorityDefault, _DummyFunction, NULL, &pThread5);    
+    PTHREAD pThread6;
+    ThreadCreate("Thread6", ThreadPriorityDefault, _DummyFunction, NULL, &pThread6);    
+    PTHREAD pThread7;
+    ThreadCreate("Thread7", ThreadPriorityDefault, _DummyFunction, NULL, &pThread7);    
+    PTHREAD pThread8;
+    ThreadCreate("Thread8", ThreadPriorityDefault, _DummyFunction, NULL, &pThread8);    
+    PTHREAD pThread9;
+    ThreadCreate("Thread9", ThreadPriorityDefault, _DummyFunction, NULL, &pThread9);    
+    PTHREAD pThread10;
+    ThreadCreate("Thread10", ThreadPriorityDefault, _DummyFunction, NULL, &pThread10);
     return STATUS_SUCCESS;
 }
 
 static STATUS
-(__cdecl _ThreadInfoFunction)
+(__cdecl _SecondThreadFunction)
 (IN_OPT PVOID Context)
 {
     ASSERT(NULL == Context);
 
-    LOGL("Hello from InfoThread\n");
+    LOGL("Hello from Second Thread\n");
 
-    STATUS status = ThreadExecuteForEachThreadEntry(_CmdThreadPrintInfoThread, NULL);
-
-    return status;
+    PTHREAD pThread1;
+    ThreadCreate("SecondTh - Thread1", ThreadPriorityDefault, _DummyFunction, NULL, &pThread1);
+    return STATUS_SUCCESS;
 }
 
+static STATUS
+(__cdecl _ThirsThreadFunction)
+(IN_OPT PVOID Context)
+{
+    ASSERT(NULL == Context);
+
+    LOGL("Hello from Third Thread\n");
+
+    return STATUS_SUCCESS;
+}
+
+
+// Threads 3
 void
-(__cdecl CmdThreadFun)(
+(__cdecl CmdTestDescendents)(
     IN          QWORD       NumberOfParameters
     )
 {
     ASSERT(NumberOfParameters == 0);
-
-	PTHREAD firstThread;
-
-    ThreadCreate("SpawnThread", ThreadPriorityDefault, _SpawnThreadFunction, NULL, &firstThread);
-
-    PTHREAD secondThread;
-    ThreadCreate("InfoThread", ThreadPriorityDefault, _ThreadInfoFunction, NULL, &secondThread);
+    PTHREAD pThreadInitial1;
+    ThreadCreate("FirstThread", ThreadPriorityDefault, _FirstThreadFunction, NULL, &pThreadInitial1);
+    PTHREAD pThreadInitial2;
+    ThreadCreate("SecondThread", ThreadPriorityDefault, _SecondThreadFunction, NULL, &pThreadInitial2);
+    PTHREAD pThreadInitial3;
+    ThreadCreate("ThirdThread", ThreadPriorityDefault, _ThirsThreadFunction, NULL, &pThreadInitial3);
 }
-
 
 void
 (__cdecl CmdYield)(
@@ -778,7 +776,6 @@ STATUS
     LOG("%9U%c", pThread->TickCountEarly, '|');
     LOG("%9U%c", pThread->TickCountCompleted + pThread->TickCountEarly, '|');
     LOG("%9x%c", pThread->Process->Id, '|');
-    LOG("%9x%c", pThread->ParentId, '|');
     LOG("\n");
 
     return STATUS_SUCCESS;

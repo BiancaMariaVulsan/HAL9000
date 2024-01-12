@@ -63,6 +63,9 @@ typedef struct _THREAD
     // List of the threads in the same process
     LIST_ENTRY              ProcessList;
 
+    // Thread 1
+    LIST_ENTRY              OrderedList;
+
     // Incremented on each clock tick for the running thread
     QWORD                   TickCountCompleted;
 
@@ -89,16 +92,16 @@ typedef struct _THREAD
     // MUST be non-NULL for all threads which belong to user-mode processes
     PVOID                   UserStack;
 
-    TID 				    ParentId;
-    APIC_ID				    ParentCPUId;
-
-    LOCK 				    ListChildrenLock;
-    LIST_ENTRY  			ListChildrenEntry;   
-
-    _Guarded_by_(ListChildrenLock)
-    LIST_ENTRY 			        ListChildren;
+    QWORD                   CreationTime;
 
     struct _PROCESS*        Process;
+
+    LOCK                    ChildrenListLock;
+    LIST_ENTRY              ChildrenListEntry;
+
+    _Guarded_by_(ChildrenListLock)
+    LIST_ENTRY              ChildrenList;
+
 } THREAD, *PTHREAD;
 
 //******************************************************************************

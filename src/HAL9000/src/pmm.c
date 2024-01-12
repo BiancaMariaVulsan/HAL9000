@@ -180,11 +180,6 @@ PmmReserveMemoryEx(
 
     LockRelease( &m_pmmData.AllocationLock, oldState);
 
-    // VM ex 4
-    PHYSICAL_ADDRESS startAddress = (PHYSICAL_ADDRESS)((QWORD)idx * PAGE_SIZE);
-    PHYSICAL_ADDRESS endAddress = (PHYSICAL_ADDRESS)(((QWORD)idx + NoOfFrames) * PAGE_SIZE - 1);
-    LOG("Physical range allocated: (0x%X - 0x%X)!\n", startAddress, endAddress);
-
     return (PHYSICAL_ADDRESS) ( (QWORD) idx * PAGE_SIZE );
 }
 

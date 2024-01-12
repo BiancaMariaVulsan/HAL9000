@@ -9,8 +9,9 @@
 #include "isr.h"
 #include "gdtmu.h"
 #include "pe_exports.h"
+#include "rtc.h"
 
-#define TID_INCREMENT               6
+#define TID_INCREMENT               4
 
 #define THREAD_TIME_SLICE           1
 
@@ -36,6 +37,12 @@ typedef struct _THREAD_SYSTEM_DATA
 
     _Guarded_by_(ReadyThreadsLock)
     LIST_ENTRY          ReadyThreadsList;
+
+    // Threads 1
+    LOCK				OrderedListLock;
+
+    _Guarded_by_(OrderedListLock)
+    LIST_ENTRY			OrderedList;
 } THREAD_SYSTEM_DATA, *PTHREAD_SYSTEM_DATA;
 
 static THREAD_SYSTEM_DATA m_threadSystemData;
@@ -47,7 +54,7 @@ _ThreadSystemGetNextTid(
     void
     )
 {
-    static volatile TID __currentTid = 15;
+    static volatile TID __currentTid = 0;
 
     return _InterlockedExchangeAdd64(&__currentTid, TID_INCREMENT);
 }
@@ -145,6 +152,10 @@ ThreadSystemPreinit(
 
     InitializeListHead(&m_threadSystemData.ReadyThreadsList);
     LockInit(&m_threadSystemData.ReadyThreadsLock);
+
+    // Thread 1
+    InitializeListHead(&m_threadSystemData.OrderedList);
+    LockInit(&m_threadSystemData.OrderedListLock);
 }
 
 STATUS
@@ -551,59 +562,6 @@ ThreadExit(
 
     pThread = GetCurrentThread();
 
-
-    // Threads 2: move the children of the current thread to the parent process
-    //PTHREAD parentThread;
-    //parentThread = NULL;
-
-    //if (pThread->ParentId != 0) {
-    //    // find the parent Thread by id
-    //    LockAcquire(&m_threadSystemData.AllThreadsLock, &oldState);
-    //    for (PLIST_ENTRY pEntry = m_threadSystemData.AllThreadsList.Flink; pEntry != &m_threadSystemData.AllThreadsList; pEntry = pEntry->Flink)
-    //    {
-    //        parentThread = CONTAINING_RECORD(pEntry, THREAD, AllList);
-    //        if (parentThread->Id == pThread->ParentId)
-    //        {
-    //            break;
-    //        }
-    //    }
-    //    LockRelease(&m_threadSystemData.AllThreadsLock, oldState);
-
-    //    // I receive a kernel panic if I try to take to locks in the same time, so I use this trick
-    //    PTHREAD childrenThreads[100];
-    //    DWORD childrenCount = 0;
-
-    //    if (parentThread != NULL) {
-    //        // remove the dying thread from the parent's list
-    //        LockAcquire(&parentThread->ListChildrenLock, &oldState);
-    //        RemoveEntryList(&pThread->ListChildrenEntry);
-    //        LockRelease(&parentThread->ListChildrenLock, oldState);
-
-    //        // move the children of the dying thread to the parent's list
-    //        LockAcquire(&pThread->ListChildrenLock, &oldState);
-    //        PLIST_ENTRY pListEntry = pThread->ListChildren.Flink;
-    //        while (pListEntry != &pThread->ListChildren) {
-    //            PTHREAD pChildThread = CONTAINING_RECORD(pListEntry, THREAD, ListChildrenEntry);
-    //            pListEntry = pListEntry->Flink;
-    //            RemoveEntryList(&pChildThread->ListChildren);
-
-    //            pChildThread->ParentId = 0;
-    //            childrenThreads[childrenCount] = pChildThread;
-    //            childrenCount = childrenCount + 1;
-    //        }
-    //        LockRelease(&pThread->ListChildrenLock, oldState);
-
-    //        // add the children to the parent's list
-    //        LockAcquire(&parentThread->ListChildrenLock, &oldState);
-    //        for (DWORD i = 0; i < childrenCount; i++) {
-    //            childrenThreads[i]->ParentId = parentThread->Id;
-    //            InsertTailList(&parentThread->ListChildren, &childrenThreads[i]->ListChildrenEntry);
-    //        }
-    //        LockRelease(&parentThread->ListChildrenLock, oldState);
-    //    }
-    //}
-
-
     CpuIntrDisable();
 
     if (LockIsOwner(&pThread->BlockLock))
@@ -846,34 +804,27 @@ _ThreadInit(
         pThread->Id = _ThreadSystemGetNextTid();
         pThread->State = ThreadStateBlocked;
         pThread->Priority = Priority;
-        
-        // Threads 2
-        LockInit(&pThread->ListChildrenLock);
-        InitializeListHead(&pThread->ListChildren);
+        // Thread 1
+        pThread->CreationTime = RtcGetTickCount();
 
-        PTHREAD crtThread = GetCurrentThread(); // asta poate sa returneze null daca hall900 nu si-a initializat toate procesoarele
-        if (crtThread != NULL)
-		{
-			pThread->ParentId = crtThread->Id;
+        //LockAcquire(&m_threadSystemData.OrderedListLock, &oldIntrState);
+        //// TODO: I need to implement a comparison function for this
+        //InsertOrderedList(&m_threadSystemData.OrderedList, &pThread->OrderedList, ,NULL);
+        //LockRelease(&m_threadSystemData.OrderedListLock, oldIntrState);
 
-            LockAcquire(&crtThread->ListChildrenLock, &oldIntrState);
-            InsertTailList(&crtThread->ListChildren, &pThread->ListChildrenEntry);
-			LockRelease(&crtThread->ListChildrenLock, oldIntrState);
-		}
-		else
+        // Thread 2
+        LockInit(&pThread->ChildrenListLock);
+        InitializeListHead(&pThread->ChildrenList);
+
+        PTHREAD parentThread = GetCurrentThread();
+        if (parentThread != NULL)
 		{
-			pThread->ParentId = 0;
+			LockAcquire(&parentThread->ChildrenListLock, &oldIntrState);
+			InsertTailList(&parentThread->ChildrenList, &pThread->ChildrenListEntry);
+			LockRelease(&parentThread->ChildrenListLock, oldIntrState);
 		}
 
-        PPCPU Pcpu = GetCurrentPcpu();
-        if(Pcpu != NULL)
-		{
-			pThread->ParentCPUId = Pcpu->LogicalApicId;
-		}
-		else
-		{
-			pThread->ParentCPUId = 0;
-		}
+        LOG("As a result of [tid = 0x4] creation:", pThread->Id);
 
         LockInit(&pThread->BlockLock);
 
@@ -881,6 +832,11 @@ _ThreadInit(
         InsertTailList(&m_threadSystemData.AllThreadsList, &pThread->AllList);
         LockRelease(&m_threadSystemData.AllThreadsLock, oldIntrState);
 
+        // Log the number of children for each thread
+        //for (PLIST_ENTRY listEntry = &m_threadSystemData.AllThreadsList.Flink; listEntry != &m_threadSystemData.AllThreadsList; listEntry = listEntry->Flink) {
+        //    PTHREAD pThread = CONTAINING_RECORD(listEntry, THREAD, &m_threadSystemData.AllThreadsList);
+        //    LOG("[tid = %X] now has %X descendents.", pThread->Id, ListSize(pThread->ChildrenList));
+        //}
     }
     __finally
     {
@@ -892,9 +848,6 @@ _ThreadInit(
                 pThread = NULL;
             }
         }
-
-        LOG("Thread [tid = 0x%X] is being created\n", pThread->Id);
-
 
         *Thread = pThread;
 
@@ -1035,6 +988,7 @@ _ThreadSetupMainThreadUserStack(
     ASSERT(ResultingStack != NULL);
     ASSERT(Process != NULL);
 
+    // Userprog 1
     *ResultingStack = (PVOID)PtrDiff(InitialStack, SHADOW_STACK_SIZE + sizeof(PVOID));
 
     return STATUS_SUCCESS;

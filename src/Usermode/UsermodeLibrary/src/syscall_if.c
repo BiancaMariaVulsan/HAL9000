@@ -198,11 +198,19 @@ SyscallFileWrite(
 }
 
 STATUS
-SyscallMemset(
-    OUT_WRITES(BytesToWrite) PBYTE Address,
-    IN DWORD BytesToWrite,
-    IN BYTE ValueToWrite
+SyscallSwapOut(
+    IN      PVOID       VirtualAddress
+    )
+{
+	return SyscallEntry(SyscallIdSwapOut, VirtualAddress);
+}
+
+STATUS
+SyscallGetNumberOfThreadsInInterval(
+    IN                              QWORD   StartCreateTime,
+    IN                              QWORD   EndCreateTime,
+    OUT                             QWORD*  NumberOfThreads
 )
 {
-    return SyscallEntry(SyscallIdMemset, Address, BytesToWrite, ValueToWrite);
+	return SyscallEntry(SyscallIdGetNumberOfThreadsInInterval, StartCreateTime, EndCreateTime, NumberOfThreads);
 }
