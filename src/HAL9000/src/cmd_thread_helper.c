@@ -16,6 +16,8 @@
 #include "ex_timer.h"
 #include "vmm.h"
 #include "pit.h"
+#include "conditional_variables.h"
+#include "rtc.h"
 
 
 #pragma warning(push)
@@ -72,6 +74,9 @@ _CmdReadAndDumpCpuid(
     );
 
 static FUNC_ListFunction _CmdThreadPrint;
+
+// Threads 5.
+static FUNC_ListFunction _CmdMutexInfoPrint;
 
 void
 (__cdecl CmdListCpus)(
@@ -137,94 +142,274 @@ void
     LOG("%10s", "Prt ticks|");
     LOG("%10s", "Ttl ticks|");
     LOG("%10s", "Process|");
+    // Threads 3. Print the clildren of a thread
+    LOG("%10s", "Children|");
     LOG("\n");
 
     status = ThreadExecuteForEachThreadEntry(_CmdThreadPrint, NULL );
     ASSERT( SUCCEEDED(status));
 }
 
-static STATUS
-(__cdecl _DummyFunction)
-(IN_OPT PVOID Context) {
-    ASSERT(NULL == Context);
-    PTHREAD pThread = GetCurrentThread();
-    ASSERT(NULL != pThread);
-
-    LOGL("My name is %s\n", pThread->Name);
-    return STATUS_SUCCESS;
-}
-
-
-static STATUS
-(__cdecl _FirstThreadFunction)
-(IN_OPT PVOID Context)
-{
-    ASSERT(NULL == Context);
-
-    LOGL("Hello from First Thread\n");
-
-    PTHREAD pThread1;
-    ThreadCreate("Thread1", ThreadPriorityDefault, _DummyFunction, NULL, &pThread1);    
-    PTHREAD pThread2;
-    ThreadCreate("Thread2", ThreadPriorityDefault, _DummyFunction, NULL, &pThread2);    
-    PTHREAD pThread3;
-    ThreadCreate("Thread3", ThreadPriorityDefault, _DummyFunction, NULL, &pThread3);    
-    PTHREAD pThread4;
-    ThreadCreate("Thread4", ThreadPriorityDefault, _DummyFunction, NULL, &pThread4);    
-    PTHREAD pThread5;
-    ThreadCreate("Thread5", ThreadPriorityDefault, _DummyFunction, NULL, &pThread5);    
-    PTHREAD pThread6;
-    ThreadCreate("Thread6", ThreadPriorityDefault, _DummyFunction, NULL, &pThread6);    
-    PTHREAD pThread7;
-    ThreadCreate("Thread7", ThreadPriorityDefault, _DummyFunction, NULL, &pThread7);    
-    PTHREAD pThread8;
-    ThreadCreate("Thread8", ThreadPriorityDefault, _DummyFunction, NULL, &pThread8);    
-    PTHREAD pThread9;
-    ThreadCreate("Thread9", ThreadPriorityDefault, _DummyFunction, NULL, &pThread9);    
-    PTHREAD pThread10;
-    ThreadCreate("Thread10", ThreadPriorityDefault, _DummyFunction, NULL, &pThread10);
-    return STATUS_SUCCESS;
-}
-
-static STATUS
-(__cdecl _SecondThreadFunction)
-(IN_OPT PVOID Context)
-{
-    ASSERT(NULL == Context);
-
-    LOGL("Hello from Second Thread\n");
-
-    PTHREAD pThread1;
-    ThreadCreate("SecondTh - Thread1", ThreadPriorityDefault, _DummyFunction, NULL, &pThread1);
-    return STATUS_SUCCESS;
-}
-
-static STATUS
-(__cdecl _ThirsThreadFunction)
-(IN_OPT PVOID Context)
-{
-    ASSERT(NULL == Context);
-
-    LOGL("Hello from Third Thread\n");
-
-    return STATUS_SUCCESS;
-}
-
-
-// Threads 3
+// Threads 4.
 void
-(__cdecl CmdTestDescendents)(
+(__cdecl CmdListThreadInfo)(
     IN          QWORD       NumberOfParameters
     )
 {
     ASSERT(NumberOfParameters == 0);
-    PTHREAD pThreadInitial1;
-    ThreadCreate("FirstThread", ThreadPriorityDefault, _FirstThreadFunction, NULL, &pThreadInitial1);
-    PTHREAD pThreadInitial2;
-    ThreadCreate("SecondThread", ThreadPriorityDefault, _SecondThreadFunction, NULL, &pThreadInitial2);
-    PTHREAD pThreadInitial3;
-    ThreadCreate("ThirdThread", ThreadPriorityDefault, _ThirsThreadFunction, NULL, &pThreadInitial3);
+    
+    LOG("%10s", "Nr of Existing threads|");
+    LOG("%9U%c", GetNrOfThreads(), '|');
+
+    LOG("%10s", "Nr of Ready threads|");
+    LOG("%9U%c", GetNrOfReadyThreads(), '|');
+
+    LOG("%10s", "Nr of Blocked threads|");
+    LOG("%9U%c", GetNrOfBlockedThreads(), '|');
+
+    LOG("\n");
 }
+
+// Threads 5.
+void
+(__cdecl CmdListMutexInfo)(
+    IN          QWORD       NumberOfParameters
+    )
+{
+    STATUS status;
+
+    ASSERT(NumberOfParameters == 0);
+
+    LOG("%10s", "Mutex Index|");
+    LOG("%10s", "Mutex Waiting List|");
+
+    LOG("\n");
+
+    status = ExecuteForEachMutexEntry(_CmdMutexInfoPrint, NULL);
+    ASSERT(SUCCEEDED(status));
+}
+
+// Threads 7.
+typedef struct _THREAD_CONTEXT {
+    PMUTEX mutex;
+    PCONDITIONAL_VARIABLE condVar;
+} THREAD_CONTEXT, * PTHREAD_CONTEXT;
+
+// Threads 7.
+DWORD
+(__cdecl TestCondVarThread)(
+    IN_OPT      PVOID       Context
+    )
+{
+    PTHREAD_CONTEXT threadContext = (PTHREAD_CONTEXT)Context;
+    PMUTEX mutex = threadContext->mutex;
+    PCONDITIONAL_VARIABLE condVar = threadContext->condVar;
+
+    // Acquire the mutex and wait on the conditional variable
+    MutexAcquire(mutex);
+    CondVariableWait(condVar, mutex);
+    MutexRelease(mutex);
+
+    // Perform some work after waking up
+    LOG("Thread %d woke up!\n", GetCurrentThread()->Id);
+
+    return 0;
+}
+
+// Threads 7.
+void
+(__cdecl CmdTestCondVars)(
+    IN          QWORD       NumberOfParameters
+    )
+{
+    UNREFERENCED_PARAMETER(NumberOfParameters);
+
+    // Initialize a mutex and a conditional variable
+    PMUTEX mutex = NULL;
+    MutexInit(mutex, FALSE); // Non-recursive mutex
+
+    PCONDITIONAL_VARIABLE condVar = NULL;
+    CondVariableInit(condVar);
+
+    THREAD_CONTEXT threadContext;
+    threadContext.mutex = mutex;
+    threadContext.condVar = condVar;
+
+    // Create multiple threads that wait on the conditional variable
+    DWORD numThreads = 5;
+    PTHREAD threads[5];
+
+    for (DWORD i = 0; i < numThreads; ++i)
+    {
+        char threadName[20];
+        sprintf(threadName, "TestThread%d", i);
+
+        STATUS status = ThreadCreate(
+            threadName,
+            ThreadPriorityDefault,
+            TestCondVarThread,
+            condVar,
+            &threads[i]
+        );
+
+        if (!SUCCEEDED(status))
+        {
+            LOG_FUNC_ERROR("ThreadCreate", status);
+            return;
+        }
+    }
+
+    // Simulate some work before signaling the threads
+    for (DWORD i = 0; i < 10000000; ++i)
+    {
+        // Perform some work
+    }
+
+    // Signal the threads to wake up
+    MutexAcquire(mutex);
+    CondVariableBroadcast(condVar, mutex);
+    MutexRelease(mutex);
+
+    // Wait for threads to complete
+    for (DWORD i = 0; i < numThreads; ++i)
+    {
+        STATUS exitStatus;
+        ThreadWaitForTermination(threads[i], &exitStatus);
+    }
+
+    // Clean up resources
+    MutexDestroy(mutex);
+}
+
+
+// Threads 9.
+typedef struct _THREAD_DATA {
+    PFILE_OBJECT fileObject;
+    QWORD startOffset;
+    QWORD endOffset;
+    QWORD partialSum;
+} THREAD_DATA, * PTHREAD_DATA;
+
+QWORD chunkSize;
+
+// Threads 10 - Shared Sum Variable Declaration
+// This version might be slower due to the atomic operations
+_Interlocked_
+volatile DWORD sharedSum = 0;
+
+// Function to be executed by each thread
+STATUS 
+(__cdecl ThreadSumBytes)(
+    INOUT   PVOID    context
+) 
+{
+    PTHREAD_DATA threadData = (PTHREAD_DATA)context;
+
+    // Read a chunk of the file
+    PVOID buffer = ExAllocatePoolWithTag(PoolAllocateZeroMemory, (DWORD)chunkSize, HEAP_TEST_TAG, 0);
+    QWORD bytesRead;
+
+    STATUS readStatus = IoReadFile(threadData->fileObject, chunkSize, &threadData->startOffset, buffer, &bytesRead);
+
+    if (readStatus != STATUS_SUCCESS) {
+        LOG_ERROR("Error reading from file\n");
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    // Calculate the sum of bytes in the chunk
+    QWORD sum = 0;
+    PBYTE byteBuffer = (PBYTE)buffer;
+    for (QWORD i = 0; i < bytesRead; ++i) {
+        sum += byteBuffer[i];
+    }
+
+    // Update the partial sum in thread-specific data
+    threadData->partialSum = sum;
+
+    // Threads 10. Update the shared sum
+    // COMMENT THIS FOR WHEN MESURING THE TIME FOR PROBLEM 9
+    for (QWORD i = 0; i < sum; ++i) {
+        _InterlockedIncrement(&sharedSum);
+    }
+
+    // Clean up
+    ExFreePoolWithTag(buffer, HEAP_TEST_TAG);
+
+    return STATUS_SUCCESS;
+}
+
+// Threads 9.
+void
+(__cdecl CmdCalculateSum)(
+    IN          QWORD       NumberOfParameters,
+    IN          DWORD       NumberOfThreads,
+    IN          char*       FileName
+    )
+{
+    ASSERT(NumberOfParameters == 2);
+
+    // Open the file for reading
+    PFILE_OBJECT fileObject;
+    IoCreateFile(&fileObject, FileName, FALSE, FALSE, 0);
+
+    if (!fileObject) {
+        LOG_ERROR("Error opening file\n");
+        return;
+    }
+
+    // Create an array to store thread handles and thread data
+    PTHREAD* threads = ExAllocatePoolWithTag(PoolAllocateZeroMemory, NumberOfThreads * sizeof(PTHREAD), HEAP_TEST_TAG, 0);
+    THREAD_DATA* threadData = ExAllocatePoolWithTag(PoolAllocateZeroMemory, NumberOfThreads * sizeof(THREAD_DATA), HEAP_TEST_TAG, 0);
+
+    // Calculate the chunk size for each thread
+    QWORD fileSize = fileObject->FileSize;
+    chunkSize = fileSize / NumberOfThreads;
+
+    // Create and run N threads
+    QWORD startTime = RtcGetTickCount();
+    for (DWORD i = 0; i < NumberOfThreads; ++i) {
+        // Initialize thread data
+        threadData[i].fileObject = fileObject;
+        threadData[i].startOffset = i * chunkSize;
+        threadData[i].endOffset = (i == NumberOfThreads - 1) ? fileSize : (i + 1) * chunkSize;
+        threadData[i].partialSum = 0;
+
+        // Create the thread
+        STATUS threadStatus = ThreadCreate("SumThread", ThreadPriorityDefault, ThreadSumBytes, &threadData[i], &threads[i]);
+
+        if (threadStatus != STATUS_SUCCESS) {
+            LOG_ERROR("Error creating thread %d\n", i);
+            return;
+        }
+    }
+
+    // Wait for all threads to finish
+    for (DWORD i = 0; i < NumberOfThreads; ++i) {
+        STATUS status;
+        ThreadWaitForTermination(threads[i], &status);
+        if (status != STATUS_SUCCESS) {
+			LOG_ERROR("Error waiting for thread %d\n", i);
+			return;
+		}
+    }
+
+    // Calculate the final sum by adding partial sums from each thread
+    // COMMENT THIS FOR WHEN MESURING THE TIME FOR PROBLEM 10
+    QWORD finalSum = 0;
+    for (DWORD i = 0; i < NumberOfThreads; ++i) {
+        finalSum += threadData[i].partialSum;
+    }
+    QWORD endTime = RtcGetTickCount();
+    LOG("The time needed to compute the sum is %u us\n", endTime - startTime);
+
+    // Print the final result
+    printf("Sum of bytes in the file: %llu\n", finalSum);
+    printf("Sum of bytes in the file: %llu\n", sharedSum);
+
+    // Close the file
+    IoCloseFile(fileObject);
+}
+
 
 void
 (__cdecl CmdYield)(
@@ -776,6 +961,41 @@ STATUS
     LOG("%9U%c", pThread->TickCountEarly, '|');
     LOG("%9U%c", pThread->TickCountCompleted + pThread->TickCountEarly, '|');
     LOG("%9x%c", pThread->Process->Id, '|');
+    // Threads 3. Print the clildren of a thread
+    for (LIST_ENTRY *pChild = pThread->ChildrenListHead.Flink;
+		 pChild != &pThread->ChildrenListHead;
+		 pChild = pChild->Flink)
+	{
+		PTHREAD pChildThread = CONTAINING_RECORD(pChild, THREAD, ChildrenListElem);
+
+		LOG("%9x%c", pChildThread->Id, '|');
+	}
+    LOG("\n");
+
+    return STATUS_SUCCESS;
+}
+
+// Threads 5.
+static
+STATUS
+(__cdecl _CmdMutexInfoPrint) (
+    IN      PLIST_ENTRY     ListEntry,
+    IN_OPT  PVOID           FunctionContext
+    )
+{
+    ASSERT(NULL != ListEntry);
+    ASSERT(NULL == FunctionContext);
+
+    PMUTEX pMutex = CONTAINING_RECORD(ListEntry, MUTEX, MutexListEntry);
+    // Iterate through the waiting list
+    for (LIST_ENTRY* pWaiter = pMutex->WaitingList.Flink;
+        pWaiter != &pMutex->WaitingList;
+        pWaiter = pWaiter->Flink)
+    {
+        PTHREAD pThread = CONTAINING_RECORD(pWaiter, THREAD, ReadyList);
+        LOG("%9x%c", pThread->Id, '|');
+    }
+
     LOG("\n");
 
     return STATUS_SUCCESS;

@@ -4,6 +4,14 @@
 
 FUNC_GenericCommand CmdListCpus;
 FUNC_GenericCommand CmdListThreads;
+// Threads 9.
+FUNC_GenericCommand CmdCalculateSum;
+// Threads 7.
+FUNC_GenericCommand CmdTestCondVars;
+// Threads 5.
+FUNC_GenericCommand CmdListMutexInfo;
+// Threads 4.
+FUNC_GenericCommand CmdListThreadInfo;
 FUNC_GenericCommand CmdYield;
 FUNC_GenericCommand CmdRunTest;
 FUNC_GenericCommand CmdSendIpi;
@@ -14,4 +22,3 @@ FUNC_GenericCommand CmdRdmsr;
 FUNC_GenericCommand CmdWrmsr;
 FUNC_GenericCommand CmdCheckAd;
 FUNC_GenericCommand CmdSpawnThreads;
-FUNC_GenericCommand CmdTestDescendents;

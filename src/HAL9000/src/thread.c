@@ -9,9 +9,9 @@
 #include "isr.h"
 #include "gdtmu.h"
 #include "pe_exports.h"
-#include "rtc.h"
 
-#define TID_INCREMENT               4
+// Threads 1.
+#define TID_INCREMENT               -1
 
 #define THREAD_TIME_SLICE           1
 
@@ -38,11 +38,10 @@ typedef struct _THREAD_SYSTEM_DATA
     _Guarded_by_(ReadyThreadsLock)
     LIST_ENTRY          ReadyThreadsList;
 
-    // Threads 1
-    LOCK				OrderedListLock;
-
-    _Guarded_by_(OrderedListLock)
-    LIST_ENTRY			OrderedList;
+    // Threads 4.
+    QWORD               NrOfThreads;
+    QWORD			    NrOfReadyThreads;
+    QWORD			    NrOfBlockedThreads;
 } THREAD_SYSTEM_DATA, *PTHREAD_SYSTEM_DATA;
 
 static THREAD_SYSTEM_DATA m_threadSystemData;
@@ -54,7 +53,8 @@ _ThreadSystemGetNextTid(
     void
     )
 {
-    static volatile TID __currentTid = 0;
+    // Threads 1.
+    static volatile TID __currentTid = MAX_QWORD;
 
     return _InterlockedExchangeAdd64(&__currentTid, TID_INCREMENT);
 }
@@ -153,9 +153,10 @@ ThreadSystemPreinit(
     InitializeListHead(&m_threadSystemData.ReadyThreadsList);
     LockInit(&m_threadSystemData.ReadyThreadsLock);
 
-    // Thread 1
-    InitializeListHead(&m_threadSystemData.OrderedList);
-    LockInit(&m_threadSystemData.OrderedListLock);
+    // Threads 4.
+    m_threadSystemData.NrOfThreads = 0;
+    m_threadSystemData.NrOfReadyThreads = 0;
+    m_threadSystemData.NrOfBlockedThreads = 0;
 }
 
 STATUS
@@ -343,6 +344,13 @@ ThreadCreateEx(
         return status;
     }
 
+    // Threads 3.
+    PTHREAD crtThread = GetCurrentThread();
+    INTR_STATE oldState;
+    LockAcquire(&crtThread->ChildrenListLock, &oldState);
+    InsertTailList(&crtThread->ChildrenListHead, &pThread->ChildrenListElem);
+    LockRelease(&crtThread->ChildrenListLock, oldState);
+
     ProcessInsertThreadInList(Process, pThread);
 
     // the reference must be done outside _ThreadInit
@@ -426,6 +434,9 @@ ThreadCreateEx(
 
     *Thread = pThread;
 
+    // Threads 1.
+    LOG_TRACE_THREAD("Thread [tid = 0x%X] is being created\n", pThread->Id);
+
     return status;
 }
 
@@ -489,6 +500,9 @@ ThreadYield(
     LockAcquire(&m_threadSystemData.ReadyThreadsLock, &dummyState);
     if (pThread != pCpu->ThreadData.IdleThread)
     {
+        // Threads 4.
+        m_threadSystemData.NrOfReadyThreads++;
+
         InsertTailList(&m_threadSystemData.ReadyThreadsList, &pThread->ReadyList);
     }
     if (!bForcedYield)
@@ -499,6 +513,9 @@ ThreadYield(
     _ThreadSchedule();
     ASSERT( !LockIsOwner(&m_threadSystemData.ReadyThreadsLock));
     LOG_TRACE_THREAD("Returned from _ThreadSchedule\n");
+
+    // Threads 2.
+    pThread->TimesYielded++;
 
     CpuIntrSetState(oldState);
 }
@@ -527,6 +544,9 @@ ThreadBlock(
     LockAcquire(&m_threadSystemData.ReadyThreadsLock, &oldState);
     _ThreadSchedule();
     ASSERT( !LockIsOwner(&m_threadSystemData.ReadyThreadsLock));
+
+    // Threads 4.
+    m_threadSystemData.NrOfBlockedThreads++;
 }
 
 void
@@ -544,6 +564,10 @@ ThreadUnblock(
     ASSERT(ThreadStateBlocked == Thread->State);
 
     LockAcquire(&m_threadSystemData.ReadyThreadsLock, &dummyState);
+    // Threads 4.
+    m_threadSystemData.NrOfReadyThreads++;
+    m_threadSystemData.NrOfBlockedThreads--;
+
     InsertTailList(&m_threadSystemData.ReadyThreadsList, &Thread->ReadyList);
     Thread->State = ThreadStateReady;
     LockRelease(&m_threadSystemData.ReadyThreadsLock, dummyState );
@@ -561,6 +585,12 @@ ThreadExit(
     LOG_FUNC_START_THREAD;
 
     pThread = GetCurrentThread();
+
+    // Threads 2.
+    LOG_TRACE_THREAD("Thread [tid = 0x%X] yielded %u times\n", pThread->Id, pThread->TimesYielded);
+
+    // Threads 4.
+    m_threadSystemData.NrOfThreads--;
 
     CpuIntrDisable();
 
@@ -804,39 +834,22 @@ _ThreadInit(
         pThread->Id = _ThreadSystemGetNextTid();
         pThread->State = ThreadStateBlocked;
         pThread->Priority = Priority;
-        // Thread 1
-        pThread->CreationTime = RtcGetTickCount();
-
-        //LockAcquire(&m_threadSystemData.OrderedListLock, &oldIntrState);
-        //// TODO: I need to implement a comparison function for this
-        //InsertOrderedList(&m_threadSystemData.OrderedList, &pThread->OrderedList, ,NULL);
-        //LockRelease(&m_threadSystemData.OrderedListLock, oldIntrState);
-
-        // Thread 2
-        LockInit(&pThread->ChildrenListLock);
-        InitializeListHead(&pThread->ChildrenList);
-
-        PTHREAD parentThread = GetCurrentThread();
-        if (parentThread != NULL)
-		{
-			LockAcquire(&parentThread->ChildrenListLock, &oldIntrState);
-			InsertTailList(&parentThread->ChildrenList, &pThread->ChildrenListEntry);
-			LockRelease(&parentThread->ChildrenListLock, oldIntrState);
-		}
-
-        LOG("As a result of [tid = 0x4] creation:", pThread->Id);
 
         LockInit(&pThread->BlockLock);
 
         LockAcquire(&m_threadSystemData.AllThreadsLock, &oldIntrState);
+        // Threads 4.
+        m_threadSystemData.NrOfThreads++;
+
         InsertTailList(&m_threadSystemData.AllThreadsList, &pThread->AllList);
         LockRelease(&m_threadSystemData.AllThreadsLock, oldIntrState);
 
-        // Log the number of children for each thread
-        //for (PLIST_ENTRY listEntry = &m_threadSystemData.AllThreadsList.Flink; listEntry != &m_threadSystemData.AllThreadsList; listEntry = listEntry->Flink) {
-        //    PTHREAD pThread = CONTAINING_RECORD(listEntry, THREAD, &m_threadSystemData.AllThreadsList);
-        //    LOG("[tid = %X] now has %X descendents.", pThread->Id, ListSize(pThread->ChildrenList));
-        //}
+        // Threads 2.
+        pThread->TimesYielded = 0;
+
+        // Threads 3.
+        LockInit(&pThread->ChildrenListLock);
+        InitializeListHead(&pThread->ChildrenListHead);
     }
     __finally
     {
@@ -988,7 +1001,8 @@ _ThreadSetupMainThreadUserStack(
     ASSERT(ResultingStack != NULL);
     ASSERT(Process != NULL);
 
-    // Userprog 1
+    //*ResultingStack = InitialStack;
+    // Userprog ex. 1
     *ResultingStack = (PVOID)PtrDiff(InitialStack, SHADOW_STACK_SIZE + sizeof(PVOID));
 
     return STATUS_SUCCESS;
@@ -1154,6 +1168,8 @@ _ThreadGetReadyThread(
     ASSERT( LockIsOwner(&m_threadSystemData.ReadyThreadsLock));
 
     pNextThread = NULL;
+    // Threads 4.
+    m_threadSystemData.NrOfReadyThreads--;
 
     pEntry = RemoveHeadList(&m_threadSystemData.ReadyThreadsList);
     if (pEntry == &m_threadSystemData.ReadyThreadsList)
@@ -1227,6 +1243,9 @@ _ThreadDestroy(
     ASSERT(NULL == Context);
 
     LockAcquire(&m_threadSystemData.AllThreadsLock, &oldState);
+    // Threads 4.
+    m_threadSystemData.NrOfThreads--;
+
     RemoveEntryList(&pThread->AllList);
     LockRelease(&m_threadSystemData.AllThreadsLock, oldState);
 
@@ -1277,4 +1296,25 @@ _ThreadKernelFunction(
 
     ThreadExit(exitStatus);
     NOT_REACHED;
+}
+
+// Threads 4.
+QWORD 
+GetNrOfThreads()
+{
+	return m_threadSystemData.NrOfThreads;
+}
+
+// Threads 4.
+QWORD
+GetNrOfReadyThreads()
+{
+	return m_threadSystemData.NrOfReadyThreads;
+}
+
+// Threads 4.
+QWORD
+GetNrOfBlockedThreads()
+{
+	return m_threadSystemData.NrOfBlockedThreads;
 }

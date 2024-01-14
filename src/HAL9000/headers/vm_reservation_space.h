@@ -2,8 +2,51 @@
 
 #include "mem_structures.h"
 #include "vmm.h"
+#include "bitmap.h"
 
 typedef struct _FILE_OBJECT *PFILE_OBJECT;
+
+typedef enum _VMM_RESERVATION_STATE
+{
+    VmmReservationStateFree = 0x0,
+    VmmReservationStateUsed = 0x1,
+    VmmReservationStateLast = 0x2,
+} VMM_RESERVATION_STATE;
+
+// A reservation is allocated each time a process reserves an area of
+// virtual memory. The commit bitmap is used to distinguish between the
+// reserved memory and the committed memory.
+typedef struct _VMM_RESERVATION
+{
+    // Starting addresses of the virtual memory allocation
+    PVOID                   StartVa;
+
+    // Size of the allocation
+    QWORD                   Size;
+
+    // The rights with which the memory was allocated
+    PAGE_RIGHTS             PageRights;
+
+    // The state of the this structure, this is used for finding the
+    // next free slot
+    VMM_RESERVATION_STATE   State;
+
+    // If TRUE memory will be set as strong uncacheable (UC)
+    // If FALSE the memory will be set as write back (WB)
+    BOOLEAN                 Uncacheable;
+
+    // Used for memory backed up by files
+    // Indicates the file which holds the data
+    PFILE_OBJECT            BackingFile;
+
+    // Describes which pages of the virtual memory reserved are actually
+    // committed, i.e. which are valid when a #PF occurs
+    BITMAP                  CommitBitmap;
+
+    // Virtual Memory 7.
+    BOOLEAN				    Usable;
+} VMM_RESERVATION, * PVMM_RESERVATION;
+
 
 typedef struct _VMM_RESERVATION_SPACE
 {
@@ -21,6 +64,8 @@ typedef struct _VMM_RESERVATION_SPACE
     QWORD               TotalMetadataSize;
 
     RW_SPINLOCK         ReservationLock;
+
+    PPROCESS            Process;
 
     _Guarded_by_(ReservationLock)
     PBYTE               FreeBitmapAddress;

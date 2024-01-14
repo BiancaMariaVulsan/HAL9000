@@ -196,21 +196,3 @@ SyscallFileWrite(
 {
     return SyscallEntry(SyscallIdFileWrite, FileHandle, Buffer, BytesToWrite, BytesWritten);
 }
-
-STATUS
-SyscallSwapOut(
-    IN      PVOID       VirtualAddress
-    )
-{
-	return SyscallEntry(SyscallIdSwapOut, VirtualAddress);
-}
-
-STATUS
-SyscallGetNumberOfThreadsInInterval(
-    IN                              QWORD   StartCreateTime,
-    IN                              QWORD   EndCreateTime,
-    OUT                             QWORD*  NumberOfThreads
-)
-{
-	return SyscallEntry(SyscallIdGetNumberOfThreadsInInterval, StartCreateTime, EndCreateTime, NumberOfThreads);
-}

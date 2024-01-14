@@ -68,6 +68,15 @@ static const COMMAND_DEFINITION COMMANDS[] =
                 "\n\t$TIMES - number of times to wait for timer, valid only if periodic", CmdTestTimer, 1, 3},
 
     { "threads", "Displays all threads", CmdListThreads, 0, 0},
+    // Threads 4.
+    { "threadinfo", "Displays thread info", CmdListThreadInfo, 0, 0},
+    // Threads 5.
+    { "displaymutex", "Displays mutex list", CmdListMutexInfo, 0, 0},
+    // Threads 7.
+    { "displaymutex", "Test conditional variables", CmdTestCondVars, 0, 0},
+    // Threads 9.
+    { "calculatesum", "Calculate Sum", CmdCalculateSum, 2, 2},
+
     { "run", "$TEST [$NO_OF_THREADS]\n\tRuns the $TEST specified"
              "\n\t$NO_OF_THREADS the number of threads for running the test,"
              "if the number is not specified then it will run on 2 * NumberOfProcessors",
@@ -106,8 +115,7 @@ static const COMMAND_DEFINITION COMMANDS[] =
     { "rangefail", "Causes a range check failure to assert", CmdRangeFail, 0, 0},
     { "bitecookie", "Causes a GS cookie corruption to assert", CmdBiteCookie, 0, 0},
 
-    { "help", "Displays this help menu", _CmdPrintHelp, 0, 0},
-    { "testdescendents", "Displays all descendents", CmdTestDescendents, 0, 0},
+    { "help", "Displays this help menu", _CmdPrintHelp, 0, 0}
 };
 
 #define NO_OF_COMMANDS      ARRAYSIZE(COMMANDS)

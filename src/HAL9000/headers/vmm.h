@@ -9,6 +9,20 @@ typedef struct _VMM_RESERVATION_SPACE* PVMM_RESERVATION_SPACE;
 
 typedef struct _MDL *PMDL;
 
+// Virtual Memory 4. Maintain a list of physical to virtual address mappings for each process. Log this list each time a process is destroyed.
+typedef struct _FRAME_MAPPING
+{
+    PHYSICAL_ADDRESS    PhysicalAddress;
+    PVOID               VirtualAddress;
+
+    QWORD               AccessCount;
+
+    // Virtual Memory 8.
+    BOOLEAN             IsMapped;
+
+    LIST_ENTRY          ListEntry;
+} FRAME_MAPPING, * PFRAME_MAPPING;
+
 _No_competing_thread_
 void
 VmmPreinit(
@@ -311,5 +325,14 @@ VmmIsBufferValid(
 void
 VmmTick(
     void
-     );
+    );
 
+void
+VmmMarkPageAsUsable(
+    PVMM_RESERVATION_SPACE Va_Space
+);
+
+void
+VmmMarkPageAsNotUsable(
+    PVMM_RESERVATION_SPACE Va_Space
+);

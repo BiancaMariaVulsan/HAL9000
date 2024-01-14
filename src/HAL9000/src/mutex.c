@@ -19,6 +19,12 @@ MutexInit(
 
     InitializeListHead(&Mutex->WaitingList);
 
+    // Threads 5. & Userprog 8.
+    INTR_STATE oldState;
+    LockAcquire(&gMutexLock, &oldState);
+    InsertTailList(&gMutexHead, &Mutex->MutexListEntry);
+    LockRelease(&gMutexLock, oldState);
+
     Mutex->MaxRecursivityDepth = Recursive ? MUTEX_MAX_RECURSIVITY_DEPTH : 1;
 }
 
@@ -110,4 +116,57 @@ MutexRelease(
     _Analysis_assume_lock_released_(*Mutex);
 
     LockRelease(&Mutex->MutexLock, oldState);
+}
+
+// Userprog 8. & Threads 5.
+void
+MutexSystemInit(
+    void
+    ) 
+{
+    LockInit(&gMutexLock);
+    InitializeListHead(&gMutexHead);
+}
+
+// Userprog 8. & Threads 5.
+void
+MutexDestroy(
+    IN       PMUTEX      Mutex
+    )
+{
+	ASSERT(NULL != Mutex);
+
+    INTR_STATE oldState;
+
+	LockAcquire(&gMutexLock, &oldState);
+	RemoveEntryList(&Mutex->MutexListEntry);
+	LockRelease(&gMutexLock, oldState);
+}
+
+// Threads 5.
+STATUS
+ExecuteForEachMutexEntry(
+    IN      PFUNC_ListFunction  Function,
+    IN_OPT  PVOID               Context
+    )
+{
+    STATUS status;
+    INTR_STATE oldState;
+
+    if (NULL == Function)
+    {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+    status = STATUS_SUCCESS;
+
+    LockAcquire(&gMutexLock, &oldState);
+    status = ForEachElementExecute(&gMutexHead,
+        Function,
+        Context,
+        FALSE
+    );
+    LockRelease(&gMutexLock, oldState);
+
+    return status;
 }

@@ -9,5 +9,5 @@ ExSystemTimerTick(
     )
 {
     ThreadTick();
-    //VmmTick();
+    // VmmTick();
 }

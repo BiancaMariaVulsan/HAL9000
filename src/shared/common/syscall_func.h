@@ -307,15 +307,112 @@ SyscallFileWrite(
     OUT QWORD*                      BytesWritten
     );
 
-
+// SyscallIdMemset
+//******************************************************************************
+// Function:     SyscallMemset
+// Description:  Userprog ex. 4
+// Returns:      STATUS
+// Parameter:    OUT_WRITES PBYTE Address
+// Parameter:    IN DWORD BytesToWrite
+// Parameter:    IN BYTE ValueToWrite
+//******************************************************************************
 STATUS
-SyscallSwapOut(
-    IN      PVOID       VirtualAddress
+SyscallMemset(
+    OUT_WRITES(BytesToWrite)    PBYTE   Address,
+    IN                          DWORD   BytesToWrite,
+    IN                          BYTE    ValueToWrite
     );
 
+// SyscallIdMemset
+//******************************************************************************
+// Function:     SyscallMemset
+// Description:  Userprog ex. 6. When Disable == TRUE => all system calls except SyscallDisableSyscalls will fail. When Disable == FALSE => all system calls work normally
+// Returns:      STATUS
+// Parameter:    OUT_WRITES PBYTE Address
+// Parameter:    IN DWORD BytesToWrite
+// Parameter:    IN BYTE ValueToWrite
+//******************************************************************************
 STATUS
-SyscallGetNumberOfThreadsInInterval(
-    IN                              QWORD   StartCreateTime,
-    IN                              QWORD   EndCreateTime,
-    OUT                             QWORD* NumberOfThreads
+SyscallDisableSyscalls(
+    IN      BOOLEAN     Disable
+    );
+
+// SyscallIdSetGlobalVariable 
+//******************************************************************************
+// Function:     SyscallSetGlobalVariable
+// Description:  Userprog ex. 7.
+// Returns:      STATUS
+// Parameter:    IN_READS_Z char* VariableName
+// Parameter:    IN DWORD VarLength
+// Parameter:    IN QWORD Value
+//******************************************************************************
+STATUS
+SyscallSetGlobalVariable(
+    IN_READS_Z(VarLength)           char* VariableName,
+    IN                              DWORD   VarLength,
+    IN                              QWORD   Value
+    );
+
+// SyscallIdGetGlobalVariable 
+//******************************************************************************
+// Function:     SyscallGetGlobalVariable
+// Description:  Userprog ex. 7.
+// Returns:      STATUS
+// Parameter:    IN_READS_Z char* VariableName
+// Parameter:    IN DWORD VarLength
+// Parameter:    OUT PQWORD Value
+//******************************************************************************
+STATUS
+SyscallGetGlobalVariable(
+    IN_READS_Z(VarLength)           char* VariableName,
+    IN                              DWORD   VarLength,
+    OUT                             PQWORD  Value
+    );
+
+// SyscallIdMutexAcquire 
+//******************************************************************************
+// Function:     SyscallMutexAcquire
+// Description:  Userprog ex. 8.
+// Returns:      STATUS
+// Parameter:    OUT UM_HANDLE Mutex
+//******************************************************************************
+STATUS
+SyscallMutexInit(
+    OUT         UM_HANDLE* Mutex
+    );
+
+// SyscallIdMutexAcquire 
+//******************************************************************************
+// Function:     SyscallMutexAcquire
+// Description:  Userprog ex. 8.
+// Returns:      STATUS
+// Parameter:    IN UM_HANDLE Mutex
+//******************************************************************************
+STATUS
+SyscallMutexAcquire(
+    IN       UM_HANDLE          Mutex
+    );
+
+// SyscallIdMutexRelease 
+//******************************************************************************
+// Function:     SyscallMutexRelease
+// Description:  Userprog ex. 8.
+// Returns:      STATUS
+// Parameter:    IN UM_HANDLE Mutex
+//******************************************************************************
+STATUS
+SyscallMutexRelease(
+    IN       UM_HANDLE          Mutex
+    );
+
+// SyscallIdMutexDestroy 
+//******************************************************************************
+// Function:     SyscallMutexDestroy
+// Description:  Userprog ex. 8.
+// Returns:      STATUS
+// Parameter:    IN UM_HANDLE Mutex
+//******************************************************************************
+STATUS
+SyscallMutexDestroy(
+    IN      UM_HANDLE           Mutex
     );

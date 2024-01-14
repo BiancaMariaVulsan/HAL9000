@@ -376,8 +376,27 @@ ProcessTerminate(
     ASSERT(Process != NULL);
     ASSERT(!ProcessIsSystem(Process));
 
+    // Userprog 5.
+    PPROCESS systemProcess = m_processData.SystemProcess;
+    ASSERT(systemProcess != NULL);
+    // Move the children of the process we are about to terminate to the system process
+    LockAcquire(&systemProcess->ProcessChildrenLock, &oldState);
+    systemProcess->ProcessChildrenHead = Process->ProcessChildrenHead;
+    LockRelease(&systemProcess->ProcessChildrenLock, oldState);
+
     pCurrentThread = GetCurrentThread();
     bFoundCurThreadInProcess = FALSE;
+
+    // Virtual Memory 4. Maintain a list of physical to virtual address mappings for each process. Log this list each time a process is destroyed.
+    for (PLIST_ENTRY pEntry = Process->FrameMappingsHead.Flink;
+		 pEntry != &Process->FrameMappingsHead;
+		 pEntry = pEntry->Flink)
+	{
+		PFRAME_MAPPING pFrameMapping = CONTAINING_RECORD(pEntry, FRAME_MAPPING, ListEntry);
+
+        LOG_TRACE_PROCESS("Process [%s] has frame mapping for frame 0x%X with virtual address 0x%X\n", ProcessGetName(Process), 
+            pFrameMapping->PhysicalAddress, pFrameMapping->VirtualAddress);
+	}
 
     // Go through the list of threads and notify each thread of termination
     // For the current thread (if it belongs to the process being terminated)
@@ -515,6 +534,13 @@ _ProcessInit(
         MutexAcquire(&m_processData.ProcessListLock);
         InsertTailList(&m_processData.ProcessList, &pProcess->NextProcess);
         MutexRelease(&m_processData.ProcessListLock);
+
+        InitializeListHead(&pProcess->FrameMappingsHead);
+        LockInit(&pProcess->FrameMapLock);
+
+        // Userprog 5.
+        InitializeListHead(&pProcess->ProcessChildrenHead);
+        LockInit(&pProcess->ProcessChildrenLock);
 
         LOG_TRACE_PROCESS("Process with PID 0x%X created\n", pProcess->Id);
     }
@@ -761,4 +787,8 @@ _ProcessDestroy(
     }
 
     ExFreePoolWithTag(Process, HEAP_PROCESS_TAG);
+
+    // Threads 5.
+    MutexDestroy(&m_processData.PidBitmapLock);
+    MutexDestroy(&m_processData.ProcessListLock);
 }

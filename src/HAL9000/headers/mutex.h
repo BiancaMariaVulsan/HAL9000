@@ -13,7 +13,26 @@ typedef struct _MUTEX
     _Guarded_by_(MutexLock)
     LIST_ENTRY          WaitingList;
     struct _THREAD*     Holder;
+
+    // Userprog 8.
+    LIST_ENTRY          MutexListEntry;
+
 } MUTEX, *PMUTEX;
+
+// Userprog 8. & Threads 5.
+LIST_ENTRY gMutexHead;
+LOCK gMutexLock;
+
+//******************************************************************************
+// Function:     MutexSystemInit
+// Description:  Userprog 8. & Threads 5.
+// Returns:      void
+// Parameter:    void
+//******************************************************************************
+void
+MutexSystemInit(
+	void
+	);
 
 //******************************************************************************
 // Function:     MutexInit
@@ -59,4 +78,28 @@ REQUIRES_EXCL_LOCK(*Mutex)
 void
 MutexRelease(
     INOUT       PMUTEX      Mutex
+    );
+
+//******************************************************************************
+// Function:     MutexDestroy
+// Description:  Userprog 8. & Threads 5.
+// Returns:      void
+// Parameter:    IN PMUTEX Mutex
+//******************************************************************************
+void
+MutexDestroy(
+    IN       PMUTEX      Mutex
+    );
+
+//******************************************************************************
+// Function:     ExecuteForEachMutexEntry
+// Description:  Threads 5.
+// Returns:      STATUS
+// Parameter:    IN      PFUNC_ListFunction  Function
+// Parameter:    IN_OPT  PVOID               Context
+//******************************************************************************
+STATUS
+ExecuteForEachMutexEntry(
+    IN      PFUNC_ListFunction  Function,
+    IN_OPT  PVOID               Context
     );

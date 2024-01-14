@@ -8,11 +8,39 @@
 #include "process_internal.h"
 #include "dmp_cpu.h"
 #include "thread.h"
+#include "thread_internal.h"
+#include "io.h"
+#include "iomu.h"
 #include "vmm.h"
+#include "mutex.h"
 
 extern void SyscallEntry();
 
 #define SYSCALL_IF_VERSION_KM       SYSCALL_IMPLEMENTED_IF_VERSION
+
+// Userprog 6.
+static BOOLEAN syscallsDisabled = TRUE;
+
+// Userprog 7.
+#define MAX_NAME_SIZE 256
+typedef struct {
+    char VariableName[MAX_NAME_SIZE];
+    QWORD Value;
+    LIST_ENTRY ListEntry;
+} GLOBAL_VARIABLE;
+// Array to store global variables
+LIST_ENTRY globalVariablesHead;
+LOCK globalVariablesLock;
+
+// Userprog 7.
+void 
+SyscallPreinitSystem(
+    void
+    )
+{
+    LockInit(&globalVariablesLock);
+    InitializeListHead(&globalVariablesHead);
+}
 
 void
 SyscallHandler(
@@ -63,51 +91,98 @@ SyscallHandler(
         // The first parameter is the system call ID, we don't care about it => +1
         pSyscallParameters = (PQWORD)usermodeProcessorState->RegisterValues[RegisterRbp] + 1;
 
-        // Dispatch syscalls
-        switch (sysCallId)
-        {
-        case SyscallIdIdentifyVersion:
-            status = SyscallValidateInterface((SYSCALL_IF_VERSION)*pSyscallParameters);
-            break;
-        // STUDENT TODO: implement the rest of the syscalls
-        case SyscallIdFileWrite:
-            status = SyscallFileWrite((UM_HANDLE)pSyscallParameters[0],
-                (PVOID)pSyscallParameters[1],
-                (QWORD)pSyscallParameters[2],
-                (QWORD*)pSyscallParameters[3]);
-            break;
-        case SyscallIdThreadExit:
-            status = SyscallThreadExit((STATUS)pSyscallParameters[0]);
-            break;
-        case SyscallIdProcessExit:
-            status = SyscallProcessExit((STATUS)pSyscallParameters[0]);
-            break;
-        case SyscallIdVirtualAlloc:
-            status = SyscallVirtualAlloc(
-                (PVOID)pSyscallParameters[0],
-                (QWORD)pSyscallParameters[1],
-                (VMM_ALLOC_TYPE)pSyscallParameters[2],
-                (PAGE_RIGHTS)pSyscallParameters[3],
-                (UM_HANDLE)pSyscallParameters[4],
-                (QWORD)pSyscallParameters[5],
-                (PVOID*)pSyscallParameters[6]
-            );
-            break;
-        case SyscallIdSwapOut:
-            status = SyscallSwapOut((PVOID)pSyscallParameters[0]);
-			break;
-        case SyscallIdGetNumberOfThreadsInInterval:
-			status = SyscallGetNumberOfThreadsInInterval(
-				(QWORD)pSyscallParameters[0],
-				(QWORD)pSyscallParameters[1],
-				(QWORD*)pSyscallParameters[2]
-			);
-			break;
-
-        default:
-            LOG_ERROR("Unimplemented syscall called from User-space!\n");
-            status = STATUS_UNSUPPORTED;
-            break;
+        if (syscallsDisabled) {
+            // Dispatch syscalls
+            switch (sysCallId)
+            {
+            case SyscallIdIdentifyVersion:
+                status = SyscallValidateInterface((SYSCALL_IF_VERSION)*pSyscallParameters);
+                break;
+                // STUDENT TODO: implement the rest of the syscalls
+            case SyscallIdVirtualAlloc:
+                status = SyscallVirtualAlloc(
+                    (PVOID)pSyscallParameters[0],
+                    (QWORD)pSyscallParameters[1],
+                    (VMM_ALLOC_TYPE)pSyscallParameters[2],
+                    (PAGE_RIGHTS)pSyscallParameters[3],
+                    (UM_HANDLE)pSyscallParameters[4],
+                    (QWORD)pSyscallParameters[5],
+                    (PVOID*)pSyscallParameters[6]
+                );
+                break;
+            case SyscallIdVirtualFree:
+                status = SyscallVirtualFree(
+                    (PVOID)pSyscallParameters[0],
+                    (QWORD)pSyscallParameters[1],
+                    (VMM_FREE_TYPE)pSyscallParameters[2]
+                );
+                break;
+            case SyscallIdFileWrite:
+                status = SyscallFileWrite(
+                    (UM_HANDLE)pSyscallParameters[0],
+                    (PVOID)pSyscallParameters[1],
+                    (QWORD)pSyscallParameters[2],
+                    (QWORD*)pSyscallParameters[3]
+                );
+                break;
+            case SyscallIdProcessExit:
+                status = SyscallProcessExit((STATUS)pSyscallParameters[0]);
+                break;
+            case SyscallIdThreadExit:
+                status = SyscallThreadExit((STATUS)pSyscallParameters[0]);
+                break;
+            case SyscallIdMemset:
+                status = SyscallMemset(
+                    (PBYTE)pSyscallParameters[0],
+                    (DWORD)pSyscallParameters[1],
+                    (BYTE)pSyscallParameters[2]
+                );
+                break;
+            case SyscallIdProcessCreate:
+                status = SyscallProcessCreate((char*)pSyscallParameters[0],
+                    (QWORD)pSyscallParameters[1], (char*)pSyscallParameters[2],
+                    (QWORD)pSyscallParameters[3], (UM_HANDLE*)pSyscallParameters[4]);
+                break;
+            case SyscallIdDisableSyscalls:
+                status = SyscallDisableSyscalls((BOOLEAN)pSyscallParameters[0]);
+                break;
+            case SyscallIdSetGlobalVariable:
+				status = SyscallSetGlobalVariable((char*)pSyscallParameters[0],
+					(DWORD)pSyscallParameters[1], (QWORD)pSyscallParameters[2]);
+				break;
+            case SyscallIdGetGlobalVariable:
+                status = SyscallGetGlobalVariable((char*)pSyscallParameters[0],
+                    (DWORD)pSyscallParameters[1], (PQWORD)pSyscallParameters[2]);
+                break;
+            case SyscallIdMutexInit:
+				status = SyscallMutexInit((UM_HANDLE*)pSyscallParameters[0]);
+				break;
+            case SyscallIdMutexAcquire:
+                status = SyscallMutexAcquire((UM_HANDLE)pSyscallParameters[0]);
+				break;
+            case SyscallIdMutexRelease:
+				status = SyscallMutexRelease((UM_HANDLE)pSyscallParameters[0]);
+                break;
+            case SyscallIdMutexDestroy:
+				status = SyscallMutexDestroy((UM_HANDLE)pSyscallParameters[0]);
+				break;
+            default:
+                LOG_ERROR("Unimplemented syscall called from User-space!\n");
+                status = STATUS_UNSUPPORTED;
+                break;
+            }
+		}
+		else {
+            switch (sysCallId)
+            {
+            case SyscallIdDisableSyscalls:
+                status = SyscallDisableSyscalls((BOOLEAN)pSyscallParameters[0]);
+                break;
+            default:
+                LOG_ERROR("Unimplemented syscall called from User-space!\n");
+                status = STATUS_UNSUPPORTED;
+                break;
+            }
         }
 
     }
@@ -119,14 +194,6 @@ SyscallHandler(
 
         CpuIntrSetState(INTR_OFF);
     }
-}
-
-void
-SyscallPreinitSystem(
-    void
-    )
-{
-
 }
 
 STATUS
@@ -187,6 +254,7 @@ SyscallCpuInit(
     LOG_TRACE_USERMODE("Successfully set STAR to 0x%X\n", starMsr.Raw);
 }
 
+// Userprog ex 1.
 // SyscallIdIdentifyVersion
 STATUS
 SyscallValidateInterface(
@@ -206,48 +274,7 @@ SyscallValidateInterface(
 }
 
 // STUDENT TODO: implement the rest of the syscalls
-
-STATUS
-SyscallFileWrite(
-    IN  UM_HANDLE                   FileHandle,
-    IN_READS_BYTES(BytesToWrite)
-    PVOID                           Buffer,
-    IN  QWORD                       BytesToWrite,
-    OUT QWORD* BytesWritten
-)
-{
-
-    ASSERT(Buffer != NULL);
-
-    if (BytesWritten == NULL) {
-        return STATUS_INVALID_PARAMETER4;
-    }
-
-    if (FileHandle == UM_FILE_HANDLE_STDOUT) {
-        LOG("[%s]:[%s]\n", ProcessGetName(NULL), Buffer);
-        if (BytesWritten != NULL) {
-            *BytesWritten = BytesToWrite;
-            return STATUS_SUCCESS;
-        }
-
-    }
-
-    LOG_ERROR("File handle 0x%x is not supported!\n", FileHandle);
-    return STATUS_UNSUPPORTED;
-}
-
-STATUS
-SyscallProcessExit(
-    IN  STATUS                      ExitStatus
-)
-{
-    LOG_TRACE_USERMODE("Will exit process with status 0x%x\n", ExitStatus);
-    PROCESS* process = GetCurrentProcess();
-    process->TerminationStatus = ExitStatus;
-    ProcessTerminate(process);
-    return STATUS_SUCCESS;
-}
-
+// Userprog 1.
 STATUS
 SyscallThreadExit(
     IN  STATUS                      ExitStatus
@@ -258,7 +285,279 @@ SyscallThreadExit(
     return STATUS_SUCCESS;
 }
 
-// Virtual Memory 1.
+// Userprog 1.
+STATUS
+SyscallProcessExit(
+    IN  STATUS                      ExitStatus
+)
+{
+    LOG_TRACE_USERMODE("Will exit process with status 0x%x\n", ExitStatus);
+    PPROCESS crtProcess = GetCurrentProcess();
+    if (crtProcess == NULL) {
+        return STATUS_UNSUCCESSFUL;
+	}
+    ProcessTerminate(crtProcess);
+    return STATUS_SUCCESS;
+}
+
+// Userprog 2.
+STATUS
+SyscallFileWrite(
+    IN  UM_HANDLE                   FileHandle,
+    IN_READS_BYTES(BytesToWrite)
+    PVOID                           Buffer,
+    IN  QWORD                       BytesToWrite,
+    OUT QWORD* BytesWritten
+)
+{
+    if (BytesWritten == NULL) {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    if (FileHandle == UM_FILE_HANDLE_STDOUT) {
+        *BytesWritten = BytesToWrite;
+        LOG("[%s]:[%s]\n", ProcessGetName(NULL), Buffer);
+        return STATUS_SUCCESS;
+    }
+
+    *BytesWritten = BytesToWrite;
+    return STATUS_SUCCESS;
+}
+
+// Userprog 4.
+STATUS
+SyscallMemset(
+    OUT_WRITES(BytesToWrite)    PBYTE   Address,
+    IN                          DWORD   BytesToWrite,
+    IN                          BYTE    ValueToWrite
+)
+{
+    STATUS status = MmuIsBufferValid(Address, sizeof(Address), PAGE_RIGHTS_WRITE, GetCurrentProcess());
+    if (!SUCCEEDED(status))
+    {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+	memset(Address, ValueToWrite, BytesToWrite);
+	return STATUS_SUCCESS;
+}
+
+// Userprog 5.
+STATUS
+SyscallProcessCreate(
+    IN_READS_Z(PathLength)
+    char*                           ProcessPath,
+    IN          QWORD               PathLength,
+    IN_READS_OPT_Z(ArgLength)
+    char*                           Arguments,
+    IN          QWORD               ArgLength,
+    OUT         UM_HANDLE*          ProcessHandle
+)
+{
+    PPROCESS pProcess;
+    STATUS status;
+    INTR_STATE oldState;
+
+    status = MmuIsBufferValid((const PVOID)ProcessPath, PathLength, PAGE_RIGHTS_READ, GetCurrentProcess());
+    if (!SUCCEEDED(status))
+    {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+    if (PathLength <= 0) {
+        return STATUS_INVALID_PARAMETER2;
+    }
+
+    if (Arguments != NULL) {
+        status = MmuIsBufferValid((const PVOID)Arguments, ArgLength, PAGE_RIGHTS_READ, GetCurrentProcess());
+        if (!SUCCEEDED(status))
+        {
+            return STATUS_INVALID_PARAMETER3;
+        }
+        if (ArgLength < 0) {
+            return STATUS_INVALID_PARAMETER3;
+        }
+    }
+
+    status = MmuIsBufferValid(ProcessHandle, sizeof(UM_HANDLE), PAGE_RIGHTS_WRITE, GetCurrentProcess());
+    if (!SUCCEEDED(status))
+    {
+        return STATUS_INVALID_PARAMETER4;
+    }
+
+    char resultPath[MAX_PATH];
+
+    if (strncmp(IomuGetSystemPartitionPath(), ProcessPath, 3) != 0) {
+        snprintf(resultPath, MAX_PATH, "%sApplications\\%s", IomuGetSystemPartitionPath(), ProcessPath);
+    }
+    else {
+        snprintf(resultPath, MAX_PATH, "%s", ProcessPath);
+    }
+
+    // ProcessCreate is used to create a child (pProcess) of the currently running process
+    status = ProcessCreate(
+        resultPath,
+        Arguments,
+        &pProcess
+    );
+    if (!SUCCEEDED(status)) {
+        *ProcessHandle = UM_INVALID_HANDLE_VALUE;
+        return status;
+    }
+
+    // Use the PID as handle
+    *ProcessHandle = pProcess->Id;
+
+    // Add the child to the list of children of the current process
+    LockAcquire(&pProcess->ProcessChildrenLock, &oldState);
+    InsertTailList(&GetCurrentProcess()->ProcessChildrenHead, &pProcess->ProcessChildrenElem);
+    LockRelease(&pProcess->ProcessChildrenLock, oldState);
+
+    return STATUS_SUCCESS;
+}
+
+// Userprog 6.
+STATUS
+SyscallDisableSyscalls(
+    IN      BOOLEAN     Disable
+    )
+{
+    syscallsDisabled = Disable;
+    return STATUS_SUCCESS;
+}
+
+// Userprog 7.
+STATUS
+SyscallSetGlobalVariable(
+    IN_READS_Z(VarLength)           char*   VariableName,
+    IN                              DWORD   VarLength,
+    IN                              QWORD   Value
+    )
+{
+    INTR_STATE oldState;
+
+    // Search for the variable in the array
+    LIST_ENTRY *crtEntry = globalVariablesHead.Flink;
+    while (crtEntry != &globalVariablesHead) {
+		GLOBAL_VARIABLE *crtVariable = CONTAINING_RECORD(crtEntry, GLOBAL_VARIABLE, ListEntry);
+		if (strncmp(crtVariable->VariableName, VariableName, VarLength) == 0) {
+			// Variable found, update its value
+			crtVariable->Value = Value;
+
+			return STATUS_SUCCESS;
+		}
+		crtEntry = crtEntry->Flink;
+	}
+
+    // Variable not found, add it to the array
+    GLOBAL_VARIABLE *newVariable = ExAllocatePoolWithTag(PoolAllocateZeroMemory, sizeof(GLOBAL_VARIABLE), HEAP_TEMP_TAG, 0);
+	if (newVariable == NULL) {
+		return STATUS_INSUFFICIENT_MEMORY;
+	}
+
+    strncpy(newVariable->VariableName, VariableName, VarLength);
+	newVariable->Value = Value;
+
+    LockAcquire(&globalVariablesLock, &oldState);
+    InsertTailList(&globalVariablesHead, &newVariable->ListEntry);
+    LockRelease(&globalVariablesLock, oldState);
+
+    return STATUS_SUCCESS;
+}
+
+// Userprog 7.
+STATUS
+SyscallGetGlobalVariable(
+    IN_READS_Z(VarLength)           char*   VariableName,
+    IN                              DWORD   VarLength,
+    OUT                             PQWORD  Value
+    )
+{
+    // Search for the variable in the array
+    LIST_ENTRY *crtEntry = globalVariablesHead.Flink;
+    while (crtEntry != &globalVariablesHead) {
+        GLOBAL_VARIABLE *crtVariable = CONTAINING_RECORD(crtEntry, GLOBAL_VARIABLE, ListEntry);
+        if (strncmp(crtVariable->VariableName, VariableName, VarLength) == 0) {
+            // Variable found, return its value
+            *Value = crtVariable->Value;
+
+            return STATUS_SUCCESS;
+        }
+        crtEntry = crtEntry->Flink;
+    }
+
+    // Variable not found
+    return STATUS_UNSUCCESSFUL;
+}
+
+// Userprog 8.
+STATUS
+SyscallMutexInit(
+    OUT         UM_HANDLE* Mutex
+)
+{
+    if (Mutex == NULL) {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+    PMUTEX mutex = NULL;
+    MutexInit(mutex, FALSE);
+    // Set the UM_HANDLE to the mutex pointer
+    *Mutex = (UM_HANDLE)mutex;
+
+    return STATUS_SUCCESS;
+}
+
+// Userprog 8.
+STATUS
+SyscallMutexAcquire(
+    IN       UM_HANDLE          Mutex
+)
+{
+    if (Mutex == UM_INVALID_HANDLE_VALUE) {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+    // Acquire the kernel-level mutex
+    PMUTEX kernelMutex = (PMUTEX)Mutex;
+    MutexAcquire(kernelMutex);
+
+    return STATUS_SUCCESS;
+}
+
+// Userprog 8.
+STATUS
+SyscallMutexRelease(
+    IN       UM_HANDLE          Mutex
+)
+{
+    if (Mutex == UM_INVALID_HANDLE_VALUE) {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+    // Release the kernel-level mutex
+    PMUTEX kernelMutex = (PMUTEX)Mutex;
+    MutexRelease(kernelMutex);
+
+    return STATUS_SUCCESS;
+}
+
+// Userprog 8.
+STATUS 
+SyscallMutexDestroy(
+    IN UM_HANDLE Mutex
+    )
+{
+    if (Mutex == UM_INVALID_HANDLE_VALUE) {
+        return STATUS_INVALID_PARAMETER1;
+    }
+
+    MutexDestroy((PMUTEX)Mutex);
+
+    return STATUS_SUCCESS;
+}
+
+// Virtual Memory 3. Implement the basic SyscallIdVirtualAlloc system call ignoring the Key parameter.
 STATUS
 SyscallVirtualAlloc(
     IN_OPT      PVOID                   BaseAddress,
@@ -267,63 +566,89 @@ SyscallVirtualAlloc(
     IN          PAGE_RIGHTS             PageRights,
     IN_OPT      UM_HANDLE               FileHandle,
     IN_OPT      QWORD                   Key,
-    OUT         PVOID* AllocatedAddress
-) {
-    UNREFERENCED_PARAMETER(Key);
+    OUT         PVOID * AllocatedAddress
+     )
+{
     UNREFERENCED_PARAMETER(FileHandle);
-
-    if (!SUCCEEDED(MmuIsBufferValid(AllocatedAddress, sizeof(PVOID), PAGE_RIGHTS_WRITE, GetCurrentProcess())))
-    {
-        return STATUS_INVALID_PARAMETER6;
+    UNREFERENCED_PARAMETER(Key);
+    
+    PPROCESS currentProcess = GetCurrentProcess();
+    
+    if (currentProcess == NULL) {
+        return STATUS_UNSUCCESSFUL;
     }
-
+    
     *AllocatedAddress = VmmAllocRegionEx(
-        BaseAddress,
-        Size,
-        AllocType,
-        PageRights,
-        FALSE,
-        NULL,
-        GetCurrentProcess()->VaSpace,
-        GetCurrentProcess()->PagingData,
-        NULL
-    );
+            BaseAddress,
+            Size,
+            AllocType,
+            PageRights,
+            FALSE,
+            NULL,
+            currentProcess->VaSpace,
+            currentProcess->PagingData,
+            NULL
+            );
 
     return STATUS_SUCCESS;
 }
 
 STATUS
-SyscallSwapOut(
-    IN      PVOID       VirtualAddress
-)
+SyscallVirtualFree(
+    IN          PVOID                   Address,
+    _When_(VMM_FREE_TYPE_RELEASE == FreeType, _Reserved_)
+     _When_(VMM_FREE_TYPE_RELEASE != FreeType, IN)
+     QWORD                   Size,
+    IN          VMM_FREE_TYPE           FreeType
+     )
 {
-    if (!SUCCEEDED(MmuIsBufferValid(VirtualAddress, sizeof(PVOID), PAGE_RIGHTS_WRITE, GetCurrentProcess())))
-	{
-		return STATUS_INVALID_PARAMETER1;
-	}
-
-    // TODO: Implement this function if I have time
-	//VmmSwapOut(VirtualAddress, GetCurrentProcess()->PagingData);
-
-	return STATUS_SUCCESS;
+    VmmFreeRegionEx(
+            Address,
+            Size,
+            FreeType,
+            TRUE,
+            GetCurrentProcess()->VaSpace,
+            GetCurrentProcess()->PagingData
+         );
+    return STATUS_SUCCESS;
 }
 
-// Userprog 3
+// Virtual Memory 7. Implement two new system calls SyscallIdMapZeroPage and SyscallIdUnmapZeroPage:
+
+// The first system call should mark the first page as valid, but not map it, i.e. a #PF should still be generated on NULL access.
 STATUS
-SyscallGetNumberOfThreadsInInterval(
-    IN                              QWORD   StartCreateTime,
-    IN                              QWORD   EndCreateTime,
-    OUT                             QWORD*  NumberOfThreads
+SyscallMapZeroPage(
+    void
 )
 {
-    UNREFERENCED_PARAMETER(StartCreateTime);
-    UNREFERENCED_PARAMETER(EndCreateTime);
+    PPROCESS pProcess = GetCurrentProcess();
 
-    if (!SUCCEEDED(MmuIsBufferValid(NumberOfThreads, sizeof(QWORD), PAGE_RIGHTS_WRITE, GetCurrentProcess())))
-	{
-		return STATUS_INVALID_PARAMETER3;
+    if (pProcess == NULL) {
+		return STATUS_UNSUCCESSFUL;
 	}
 
-    // TODO: Implement this function if I have time
+    // Mark the first page as usable
+    VmmMarkPageAsUsable(
+        pProcess->VaSpace
+		);
+    return STATUS_SUCCESS;
+}
+
+// the first page is no longer valid
+STATUS
+SyscallUnmapZeroPage(
+    void
+)
+{
+    PPROCESS pProcess = GetCurrentProcess();
+
+    if (pProcess == NULL) {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    // Mark the first page as not usable
+    VmmMarkPageAsNotUsable(
+        pProcess->VaSpace
+    );
     return STATUS_SUCCESS;
 }
